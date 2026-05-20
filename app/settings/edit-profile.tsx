@@ -19,10 +19,79 @@ import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GlassCard } from '@/components/GlassCard';
 
+interface InputFieldProps {
+  field: string;
+  label: string;
+  value: string;
+  onChange: (text: string) => void;
+  placeholder: string;
+  icon: any;
+  multiline?: boolean;
+  editable?: boolean;
+  keyboardType?: 'default' | 'phone-pad' | 'email-address';
+  colors: any;
+  styles: any;
+  focusedField: string | null;
+  setFocusedField: (field: string | null) => void;
+}
+
+const InputField = React.memo(({
+  field,
+  label,
+  value,
+  onChange,
+  placeholder,
+  icon,
+  multiline = false,
+  editable = true,
+  keyboardType = 'default',
+  colors,
+  styles,
+  focusedField,
+  setFocusedField
+}: InputFieldProps) => {
+  const Icon = icon;
+  const isFocused = focusedField === field;
+  return (
+    <View style={styles.inputContainer}>
+      <Text style={[styles.inputLabel, { color: isFocused ? colors.primary : colors.textMuted }]}>{label}</Text>
+      <View style={[
+        styles.inputWrapper, 
+        { 
+          backgroundColor: editable ? colors.surface : colors.surfaceLight, 
+          borderColor: isFocused ? colors.primary : colors.border,
+        },
+        isFocused && {
+          shadowColor: colors.primary,
+          shadowOpacity: 0.1,
+          shadowOffset: { width: 0, height: 4 },
+          shadowRadius: 8,
+          elevation: 2,
+        }
+      ]}>
+        <Icon size={18} color={isFocused ? colors.primary : colors.textMuted} />
+        <TextInput
+          style={[styles.textInput, { color: editable ? colors.text : colors.textMuted }, multiline && { height: 80, textAlignVertical: 'top' }]}
+          value={value}
+          onChangeText={onChange}
+          placeholder={placeholder}
+          placeholderTextColor={colors.textMuted}
+          onFocus={() => setFocusedField(field)}
+          onBlur={() => setFocusedField(null)}
+          multiline={multiline}
+          numberOfLines={multiline ? 3 : 1}
+          editable={editable}
+          keyboardType={keyboardType}
+        />
+      </View>
+    </View>
+  );
+});
+
 export default function EditProfileScreen() {
   const { colors, t, theme, profile, updateProfile } = useApp();
   const router = useRouter();
-  const styles = getStyles(colors);
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
 
   const [dbProfile, setDbProfile] = useState<any>(null);
   const [email, setEmail] = useState('');
@@ -132,54 +201,7 @@ export default function EditProfileScreen() {
     }
   };
 
-  const renderInputField = (
-    field: string,
-    label: string,
-    value: string,
-    onChange: (text: string) => void,
-    placeholder: string,
-    icon: any,
-    multiline = false,
-    editable = true,
-    keyboardType: 'default' | 'phone-pad' | 'email-address' = 'default'
-  ) => {
-    const Icon = icon;
-    const isFocused = focusedField === field;
-    return (
-      <View style={styles.inputContainer}>
-        <Text style={[styles.inputLabel, { color: isFocused ? colors.primary : colors.textMuted }]}>{label}</Text>
-        <View style={[
-          styles.inputWrapper, 
-          { 
-            backgroundColor: editable ? colors.surface : colors.surfaceLight, 
-            borderColor: isFocused ? colors.primary : colors.border,
-          },
-          isFocused && {
-            shadowColor: colors.primary,
-            shadowOpacity: 0.1,
-            shadowOffset: { width: 0, height: 4 },
-            shadowRadius: 8,
-            elevation: 2,
-          }
-        ]}>
-          <Icon size={18} color={isFocused ? colors.primary : colors.textMuted} />
-          <TextInput
-            style={[styles.textInput, { color: editable ? colors.text : colors.textMuted, height: multiline ? 80 : 20 }]}
-            value={value}
-            onChangeText={onChange}
-            placeholder={placeholder}
-            placeholderTextColor={colors.textMuted}
-            onFocus={() => setFocusedField(field)}
-            onBlur={() => setFocusedField(null)}
-            multiline={multiline}
-            numberOfLines={multiline ? 3 : 1}
-            editable={editable}
-            keyboardType={keyboardType}
-          />
-        </View>
-      </View>
-    );
-  };
+  // Removed renderInputField helper to prevent component recreation glitchiness.
 
   if (loading) {
     return (
@@ -250,13 +272,13 @@ export default function EditProfileScreen() {
         {/* Form Inputs */}
         <GlassCard style={styles.formCard}>
           <Text style={[styles.sectionHeading, { color: colors.text }]}>{t('business_profile')}</Text>
-          {renderInputField('businessName', 'Business Name *', businessName, setBusinessName, 'Name of your center/shop', Briefcase)}
-          {renderInputField('description', 'Business Description', description, setDescription, 'A brief summary of your service', FileText, true)}
+          <InputField field="businessName" label="Business Name *" value={businessName} onChange={setBusinessName} placeholder="Name of your center/shop" icon={Briefcase} colors={colors} styles={styles} focusedField={focusedField} setFocusedField={setFocusedField} />
+          <InputField field="description" label="Business Description" value={description} onChange={setDescription} placeholder="A brief summary of your service" icon={FileText} multiline colors={colors} styles={styles} focusedField={focusedField} setFocusedField={setFocusedField} />
 
           <Text style={[styles.sectionHeading, { color: colors.text, marginTop: 16 }]}>{t('contact_details')}</Text>
-          {renderInputField('email', 'Account Email (Non-editable)', email, () => {}, 'admin@sevastack.com', Mail, false, false, 'email-address')}
-          {renderInputField('phone', 'Phone Number', phone, setPhone, 'Your contact number', Phone, false, true, 'phone-pad')}
-          {renderInputField('address', 'Business Address', address, setAddress, 'Physical location details', MapPin, true)}
+          <InputField field="email" label="Account Email (Non-editable)" value={email} onChange={() => {}} placeholder="admin@sevastack.com" icon={Mail} editable={false} keyboardType="email-address" colors={colors} styles={styles} focusedField={focusedField} setFocusedField={setFocusedField} />
+          <InputField field="phone" label="Phone Number" value={phone} onChange={setPhone} placeholder="Your contact number" icon={Phone} keyboardType="phone-pad" colors={colors} styles={styles} focusedField={focusedField} setFocusedField={setFocusedField} />
+          <InputField field="address" label="Business Address" value={address} onChange={setAddress} placeholder="Physical location details" icon={MapPin} multiline colors={colors} styles={styles} focusedField={focusedField} setFocusedField={setFocusedField} />
         </GlassCard>
 
         {/* Dynamic Save Action button */}

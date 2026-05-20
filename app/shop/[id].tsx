@@ -25,6 +25,7 @@ import {
   Tag,
   Plus,
   Minus,
+  ArrowLeft,
   X,
   CreditCard,
   ShoppingBag
@@ -236,656 +237,1380 @@ export default function ShopDetailScreen() {
   };
 
   return (
-    <View style={[G.safeArea, { backgroundColor: colors.background }]}>
-      <Stack.Screen options={{ 
-        headerTransparent: true, 
-        headerTitle: '',
-        headerTintColor: '#FFF',
-        headerRight: () => (
-          <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.headerCircleBtn}><Share2 size={18} color="#FFF" /></TouchableOpacity>
-            <TouchableOpacity style={styles.headerCircleBtn}><Heart size={18} color="#FFF" /></TouchableOpacity>
-          </View>
-        )
-      }} />
+  <View
+    style={[
+      G.safeArea,
+      {
+        backgroundColor: colors.background,
+      },
+    ]}
+  >
+    <Stack.Screen
+      options={{
+        headerShown: false,
+      }}
+    />
 
-      <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-        {/* Cover Image */}
-        <View style={styles.coverContainer}>
-          <Image 
-            source={{ uri: info.image }} 
-            style={styles.coverImage} 
-          />
-          <LinearGradient
-            colors={['transparent', 'rgba(15, 23, 42, 0.7)', colors.background]}
-            style={styles.coverGradient}
-          />
-          <View style={styles.shopMetaOverlay}>
-            <View style={styles.badgeRow}>
-              <View style={styles.verifiedBadge}>
-                <ShieldCheck size={12} color={colors.accent} />
-                <Text style={styles.verifiedText}>Seva Verified</Text>
-              </View>
-              <View style={styles.trendingBadge}>
-                <TrendingUp size={12} color="#FFF" />
-                <Text style={styles.trendingText}>{t('trending')}</Text>
-              </View>
-            </View>
-            <Text style={styles.shopName}>{info.name}</Text>
-            <Text style={[styles.shopDesc, { color: colors.textMuted }]}>{info.desc}</Text>
-            <View style={[G.row, { marginTop: 6 }]}>
-              <Star size={14} color={colors.secondary} fill={colors.secondary} />
-              <Text style={styles.ratingText}>4.9 (120+ Reviews)</Text>
-              <Text style={styles.dot}> • </Text>
-              <Text style={styles.distanceText}>0.5 km away</Text>
-            </View>
-          </View>
-        </View>
+   {/* FLOATING PREMIUM TOP BAR */}
 
-        {/* Business Booster: Flash Deal Widget */}
-        <View style={styles.boostBanner}>
-          <LinearGradient
-            colors={[colors.primary, colors.accent]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.bannerGradient}
-          >
-            <View style={styles.bannerContent}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.bannerTitle}>Grand Opening Offer!</Text>
-                <Text style={styles.bannerSubtitle}>Get 20% OFF using SevaStack checkout pay.</Text>
-              </View>
-              <View style={styles.promoCode}>
-                <Tag size={12} color="#FFF" />
-                <Text style={styles.codeText}>SEVA20</Text>
-              </View>
-            </View>
-          </LinearGradient>
-        </View>
+<View style={styles.floatingTopBar}>
+ <TouchableOpacity
+  onPress={() => router.back()}
+  activeOpacity={0.85}
+  style={[
+    styles.headerCircleBtn,
+    {
+      backgroundColor:
+        theme === 'dark'
+          ? 'rgba(15,23,42,0.88)'
+          : 'rgba(255,255,255,0.96)',
 
-        {/* Services / Ordering System */}
-        <View style={[G.container, { paddingTop: 24 }]}>
-          <Text style={[G.h3, { color: colors.text, marginBottom: 12 }]}>{t('explore_services')}</Text>
+      borderColor:
+        theme === 'dark'
+          ? 'rgba(255,255,255,0.16)'
+          : 'rgba(0,0,0,0.08)',
 
-          {isLoading ? (
-            <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 24 }} />
-          ) : (
-            mergedServices.map((service) => {
-              const cartItem = cart[service.id];
-              return (
-                <GlassCard key={service.id} style={styles.productCard}>
-                  <View style={styles.productMain}>
-                    <View style={styles.productInfo}>
-                      <Text style={[styles.productName, { color: colors.text }]}>{service.name}</Text>
-                      <View style={styles.metaRow}>
-                        <Clock size={12} color={colors.textMuted} />
-                        <Text style={[styles.durationText, { color: colors.textMuted }]}>{service.unit || 'session'}</Text>
-                      </View>
-                      <View style={G.row}>
-                        <Text style={[styles.price, { color: colors.text }]}>₹{service.price}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.productImageContainer}>
-                      <Image source={{ uri: service.image }} style={styles.productImage} />
-                      {cartItem ? (
-                        <View style={[styles.quantityContainer, { borderColor: colors.primary }]}>
-                          <TouchableOpacity onPress={() => removeFromCart(service.id)} style={styles.qtyBtn}>
-                            <Minus size={12} color={colors.primary} />
-                          </TouchableOpacity>
-                          <Text style={[styles.qtyText, { color: colors.text }]}>{cartItem.quantity}</Text>
-                          <TouchableOpacity onPress={() => addToCart(service)} style={styles.qtyBtn}>
-                            <Plus size={12} color={colors.primary} />
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <TouchableOpacity onPress={() => addToCart(service)} style={[styles.addBtn, { borderColor: colors.primary }]}>
-                          <Text style={[styles.addBtnText, { color: colors.primary }]}>ADD +</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-                </GlassCard>
-              );
-            })
-          )}
-        </View>
+      borderWidth: 1,
 
-        {/* Location & Info */}
-        <View style={[G.container, { marginBottom: 140 }]}>
-          <Text style={[G.h3, { color: colors.text, marginBottom: 16 }]}>Location & Hours</Text>
-          <GlassCard style={styles.infoCard}>
-            <View style={G.row}>
-              <MapPin size={20} color={colors.primary} />
-              <View style={{ marginLeft: 12 }}>
-                <Text style={[G.body, { color: colors.text }]}>{info.address}</Text>
-                <Text style={[G.caption, { color: colors.textMuted }]}>Verified Partner Shop</Text>
-              </View>
-            </View>
-            <View style={[G.divider, { backgroundColor: colors.border }]} />
-            <View style={G.row}>
-              <Clock size={20} color={colors.primary} />
-              <View style={{ marginLeft: 12 }}>
-                <Text style={[G.body, { color: colors.text }]}>Open Today</Text>
-                <Text style={[G.caption, { color: colors.textMuted }]}>09:00 AM - 08:30 PM</Text>
-              </View>
-            </View>
-          </GlassCard>
-        </View>
-      </ScrollView>
+      shadowColor: '#000',
 
-      {/* Floating Checkout Button */}
-      {totalItems > 0 && (
-        <View style={styles.footer}>
-          <LinearGradient
-            colors={['rgba(15, 23, 42, 0)', 'rgba(15, 23, 42, 0.95)', 'rgba(15, 23, 42, 1)']}
-            style={styles.footerGradient}
-          />
-          <View style={[styles.checkoutBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View>
-              <Text style={[styles.itemCount, { color: colors.textMuted }]}>
-                {totalItems} {totalItems === 1 ? t('item_added') : t('items_added')}
+      shadowOffset: {
+        width: 0,
+        height: 4,
+      },
+
+      shadowOpacity: 0.18,
+      shadowRadius: 10,
+
+      elevation: 12,
+    },
+  ]}
+>
+  <ArrowLeft
+    size={22}
+    strokeWidth={2.8}
+    color={
+      theme === 'dark'
+        ? '#FFFFFF'
+        : '#111827'
+    }
+  />
+</TouchableOpacity>
+
+  <View style={styles.floatingActionGroup}>
+    <TouchableOpacity
+      style={[
+        styles.headerCircleBtn,
+        {
+          backgroundColor:
+            theme === 'dark'
+              ? 'rgba(15,23,42,0.55)'
+              : 'rgba(255,255,255,0.75)',
+
+          borderColor:
+            theme === 'dark'
+              ? 'rgba(255,255,255,0.12)'
+              : 'rgba(0,0,0,0.08)',
+        },
+      ]}
+      activeOpacity={0.85}
+    >
+      <Share2
+        size={18}
+        color={
+          theme === 'dark'
+            ? '#FFF'
+            : colors.text
+        }
+      />
+    </TouchableOpacity>
+
+    <TouchableOpacity
+      style={[
+        styles.headerCircleBtn,
+        {
+          backgroundColor:
+            theme === 'dark'
+              ? 'rgba(15,23,42,0.55)'
+              : 'rgba(255,255,255,0.75)',
+
+          borderColor:
+            theme === 'dark'
+              ? 'rgba(255,255,255,0.12)'
+              : 'rgba(0,0,0,0.08)',
+        },
+      ]}
+      activeOpacity={0.85}
+    >
+      <Heart
+        size={18}
+        color={
+          theme === 'dark'
+            ? '#FFF'
+            : colors.text
+        }
+      />
+    </TouchableOpacity>
+  </View>
+</View>
+
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      style={{ flex: 1 }}
+      contentContainerStyle={{
+        paddingBottom: 160,
+      }}
+    >
+      {/* HERO IMAGE */}
+
+      <View style={styles.coverContainer}>
+        <Image
+          source={{
+            uri: info.image,
+          }}
+          style={styles.coverImage}
+        />
+
+        <LinearGradient
+          colors={[
+            'rgba(0,0,0,0)',
+            'rgba(0,0,0,0.18)',
+            'rgba(15,23,42,0.85)',
+            colors.background,
+          ]}
+          locations={[0, 0.35, 0.75, 1]}
+          style={styles.coverGradient}
+        />
+
+        {/* HERO CONTENT */}
+
+        <View style={styles.shopMetaOverlay}>
+          <View style={styles.badgeRow}>
+            <View style={styles.verifiedBadge}>
+              <ShieldCheck
+                size={12}
+                color="#34D399"
+              />
+
+              <Text style={styles.verifiedText}>
+                Verified Partner
               </Text>
-              <Text style={[styles.totalPrice, { color: colors.text }]}>₹{totalPrice.toFixed(2)}</Text>
             </View>
-             <Button 
-              title={t('book_now')} 
-              onPress={() => setIsCheckoutVisible(true)} 
-              style={StyleSheet.flatten([styles.bookNowBtn, { backgroundColor: colors.primary }])}
+
+            <View style={styles.trendingBadge}>
+              <TrendingUp
+                size={12}
+                color="#FFF"
+              />
+
+              <Text style={styles.trendingText}>
+                Trending
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.shopName}>
+            {info.name}
+          </Text>
+
+          <Text style={styles.shopDesc}>
+            {info.desc}
+          </Text>
+
+          <View style={styles.ratingRow}>
+            <Star
+              size={14}
+              color="#FBBF24"
+              fill="#FBBF24"
             />
+
+            <Text style={styles.ratingText}>
+              4.9 (120+ reviews)
+            </Text>
+
+            <Text style={styles.dot}>
+              •
+            </Text>
+
+            <Text style={styles.distanceText}>
+              0.5 km away
+            </Text>
           </View>
         </View>
-      )}
+      </View>
 
-      {/* Checkout details & payment option Modal */}
-      <Modal
-        visible={isCheckoutVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setIsCheckoutVisible(false)}
+      {/* PREMIUM OFFER BANNER */}
+
+      <View style={styles.boostBanner}>
+        <LinearGradient
+          colors={[
+            colors.primary,
+            colors.accent,
+          ]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.bannerGradient}
+        >
+          <View style={styles.bannerContent}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bannerTitle}>
+                Grand Opening Offer
+              </Text>
+
+              <Text style={styles.bannerSubtitle}>
+                Get 20% OFF on your first
+                SevaStack booking payment.
+              </Text>
+            </View>
+
+            <View style={styles.promoCode}>
+              <Tag
+                size={12}
+                color="#FFF"
+              />
+
+              <Text style={styles.codeText}>
+                SEVA20
+              </Text>
+            </View>
+          </View>
+        </LinearGradient>
+      </View>
+
+      {/* SERVICES */}
+
+     <View style={styles.sectionContainer}>
+    <Text
+  style={[
+    styles.sectionTitle,
+    {
+      color: colors.text,
+    },
+  ]}
+>
+          Explore Services
+        </Text>
+
+        {isLoading ? (
+          <ActivityIndicator
+            size="large"
+            color={colors.primary}
+            style={{
+              marginTop: 40,
+            }}
+          />
+        ) : (
+          <View
+            style={{
+              gap: 16,
+            }}
+          >
+            {mergedServices.map(
+              (service) => {
+                const cartItem =
+                  cart[service.id];
+
+                return (
+                  <GlassCard
+                    key={service.id}
+                    style={[
+                      styles.productCard,
+                      {
+                        borderColor:
+                          colors.border,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={
+                        styles.productMain
+                      }
+                    >
+                      <View
+                        style={
+                          styles.productInfo
+                        }
+                      >
+                        <Text
+                          numberOfLines={2}
+                          style={[
+                            styles.productName,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          {service.name}
+                        </Text>
+
+                        <View
+                          style={
+                            styles.metaRow
+                          }
+                        >
+                          <Clock
+                            size={12}
+                            color={
+                              colors.textMuted
+                            }
+                          />
+
+                          <Text
+                            style={[
+                              styles.durationText,
+                              {
+                                color:
+                                  colors.textMuted,
+                              },
+                            ]}
+                          >
+                            {service.unit ||
+                              'session'}
+                          </Text>
+                        </View>
+
+                        <Text
+                          style={[
+                            styles.price,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          ₹{service.price}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={
+                          styles.productImageContainer
+                        }
+                      >
+                        <Image
+                          source={{
+                            uri:
+                              service.image,
+                          }}
+                          style={
+                            styles.productImage
+                          }
+                        />
+
+                        {cartItem ? (
+                          <View
+                            style={[
+                              styles.quantityContainer,
+                              {
+                                borderColor:
+                                  colors.primary,
+                              },
+                            ]}
+                          >
+                            <TouchableOpacity
+                              onPress={() =>
+                                removeFromCart(
+                                  service.id
+                                )
+                              }
+                              style={
+                                styles.qtyBtn
+                              }
+                            >
+                              <Minus
+                                size={14}
+                                color={
+                                  colors.primary
+                                }
+                              />
+                            </TouchableOpacity>
+
+                           <Text style={styles.qtyText}>
+                              {
+                                cartItem.quantity
+                              }
+                            </Text>
+
+                            <TouchableOpacity
+                              onPress={() =>
+                                addToCart(
+                                  service
+                                )
+                              }
+                              style={
+                                styles.qtyBtn
+                              }
+                            >
+                              <Plus
+                                size={14}
+                                color={
+                                  colors.primary
+                                }
+                              />
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            activeOpacity={
+                              0.85
+                            }
+                            onPress={() =>
+                              addToCart(
+                                service
+                              )
+                            }
+                            style={[
+                              styles.addBtn,
+                              {
+                                borderColor:
+                                  colors.primary,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.addBtnText,
+                                {
+                                  color:
+                                    colors.primary,
+                                },
+                              ]}
+                            >
+                              ADD +
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  </GlassCard>
+                );
+              }
+            )}
+          </View>
+        )}
+      </View>
+
+     {/* INFO SECTION */}
+
+<View style={styles.sectionContainer}>
+  <Text
+    style={[
+      styles.sectionTitle,
+      {
+        color: colors.text,
+      },
+    ]}
+  >
+    Location & Timing
+  </Text>
+
+  <GlassCard
+    style={[
+      styles.infoCard,
+      {
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+      },
+    ]}
+  >
+    <View style={styles.infoRow}>
+      <View
+        style={[
+          styles.infoIconWrap,
+          {
+            backgroundColor:
+              `${colors.primary}15`,
+          },
+        ]}
       >
-        <View style={styles.modalOverlay}>
-          <GlassCard style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>{t('order_payment_summary')}</Text>
-              <TouchableOpacity onPress={() => setIsCheckoutVisible(false)}>
-                <X size={20} color={colors.text} />
-              </TouchableOpacity>
-            </View>
+        <MapPin
+          size={18}
+          color={colors.primary}
+        />
+      </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380 }}>
-              {/* Item details */}
-              {cartItems.map(item => (
-                <View key={item.service.id} style={styles.summaryItem}>
-                  <Text style={[styles.summaryName, { color: colors.text }]}>{item.service.name} x{item.quantity}</Text>
-                  <Text style={[styles.summaryPrice, { color: colors.text }]}>₹{item.service.price * item.quantity}</Text>
-                </View>
-              ))}
+      <View style={styles.infoTextWrap}>
+        <Text
+          style={[
+            styles.infoTitle,
+            {
+              color: colors.text,
+            },
+          ]}
+        >
+          Landmark
+        </Text>
 
-              <View style={[G.divider, { backgroundColor: colors.border }]} />
-
-              <View style={[G.rowBetween, { marginBottom: 16 }]}>
-                <Text style={[styles.totalLabel, { color: colors.text }]}>{t('total_price')}</Text>
-                <Text style={[styles.totalValue, { color: colors.text }]}>₹{totalPrice.toFixed(2)}</Text>
-              </View>
-
-              {/* Time slot picker */}
-              <Text style={[styles.inputLabel, { color: colors.text }]}>{t('select_time_slot')} *</Text>
-              <TextInput
-                style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                value={timeSlot}
-                onChangeText={setTimeSlot}
-                placeholder="e.g. 10:30 AM"
-                placeholderTextColor={colors.textMuted}
-              />
-
-              {/* Contact Phone */}
-              <Text style={[styles.inputLabel, { color: colors.text }]}>{t('enter_phone')} *</Text>
-              <TextInput
-                style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                value={phone}
-                onChangeText={setPhone}
-                placeholder="e.g. +91 98765 43210"
-                placeholderTextColor={colors.textMuted}
-                keyboardType="phone-pad"
-              />
-
-              {/* Delivery Address */}
-              <Text style={[styles.inputLabel, { color: colors.text }]}>{t('enter_address')} *</Text>
-              <TextInput
-                style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                value={address}
-                onChangeText={setAddress}
-                placeholder="e.g. Hostel 3, Room 412"
-                placeholderTextColor={colors.textMuted}
-              />
-
-              {/* Notes */}
-              <Text style={[styles.inputLabel, { color: colors.text }]}>{t('special_notes')}</Text>
-              <TextInput
-                style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                value={notes}
-                onChangeText={setNotes}
-                placeholder="Any special request"
-                placeholderTextColor={colors.textMuted}
-              />
-
-              {/* Payment methods */}
-              <Text style={[styles.inputLabel, { color: colors.text, marginBottom: 8 }]}>{t('payment_method')} *</Text>
-              <View style={styles.paymentMethods}>
-                <TouchableOpacity 
-                  style={[
-                    styles.methodBtn, 
-                    { borderColor: colors.border },
-                    paymentMethod === 'cash' && { borderColor: colors.primary, backgroundColor: colors.primary + '10' }
-                  ]}
-                  onPress={() => setPaymentMethod('cash')}
-                >
-                  <Text style={[styles.methodText, { color: colors.text }, paymentMethod === 'cash' && { color: colors.primary }]}>
-                    {t('cash_on_counter')}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[
-                    styles.methodBtn, 
-                    { borderColor: colors.border },
-                    paymentMethod === 'upi' && { borderColor: colors.primary, backgroundColor: colors.primary + '10' }
-                  ]}
-                  onPress={() => setPaymentMethod('upi')}
-                >
-                  <Text style={[styles.methodText, { color: colors.text }, paymentMethod === 'upi' && { color: colors.primary }]}>
-                    {t('upi_instant')}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[
-                    styles.methodBtn, 
-                    { borderColor: colors.border },
-                    paymentMethod === 'khata' && { borderColor: colors.primary, backgroundColor: colors.primary + '10' }
-                  ]}
-                  onPress={() => setPaymentMethod('khata')}
-                >
-                  <Text style={[styles.methodText, { color: colors.text }, paymentMethod === 'khata' && { color: colors.primary }]}>
-                    {t('khata_credit')}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={[styles.modalCancelBtn, { backgroundColor: colors.border + '30' }]} 
-                onPress={() => setIsCheckoutVisible(false)}
-                disabled={isSubmitting}
-              >
-                <Text style={[styles.modalCancelText, { color: colors.text }]}>{t('cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalSubmitBtn, { backgroundColor: colors.primary }]} 
-                onPress={handlePlaceOrder}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator size="small" color="#FFF" />
-                ) : (
-                  <Text style={styles.modalSubmitText}>{t('place_order')}</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </GlassCard>
-        </View>
-      </Modal>
+        <Text
+          style={[
+            styles.infoSub,
+            {
+              color:
+                colors.textMuted,
+            },
+          ]}
+        >
+          {info.address}
+        </Text>
+      </View>
     </View>
-  );
+
+    <View
+      style={[
+        styles.divider,
+        {
+          backgroundColor:
+            colors.border,
+        },
+      ]}
+    />
+
+    <View style={styles.infoRow}>
+      <View
+        style={[
+          styles.infoIconWrap,
+          {
+            backgroundColor:
+              `${colors.primary}15`,
+          },
+        ]}
+      >
+        <Clock
+          size={18}
+          color={colors.primary}
+        />
+      </View>
+
+      <View style={styles.infoTextWrap}>
+        <Text
+          style={[
+            styles.infoTitle,
+            {
+              color: colors.text,
+            },
+          ]}
+        >
+          Open Today
+        </Text>
+
+        <Text
+          style={[
+            styles.infoSub,
+            {
+              color:
+                colors.textMuted,
+            },
+          ]}
+        >
+          09:00 AM - 08:30 PM
+        </Text>
+      </View>
+    </View>
+  </GlassCard>
+</View>
+    </ScrollView>
+
+    {/* FLOATING CHECKOUT */}
+
+    {totalItems > 0 && (
+      <View style={styles.footer}>
+        <LinearGradient
+          colors={[
+            'rgba(15,23,42,0)',
+            'rgba(15,23,42,0.75)',
+            'rgba(15,23,42,1)',
+          ]}
+          style={styles.footerGradient}
+        />
+
+        <View
+          style={[
+            styles.checkoutBar,
+            {
+              backgroundColor:
+                colors.surface,
+              borderColor:
+                colors.border,
+            },
+          ]}
+        >
+          <View>
+           <Text
+  style={[
+    styles.itemCount,
+    {
+      color:
+        theme === 'dark'
+          ? '#94A3B8'
+          : '#475569',
+    },
+  ]}
+>
+              {totalItems} items added
+            </Text>
+
+            <Text
+              style={[
+                styles.totalPrice,
+                {
+                  color:
+                    colors.text,
+                },
+              ]}
+            >
+              ₹
+              {totalPrice.toFixed(2)}
+            </Text>
+          </View>
+
+          <Button
+            title="Book Now"
+            onPress={() =>
+              setIsCheckoutVisible(
+                true
+              )
+            }
+            style={StyleSheet.flatten([
+              styles.bookNowBtn,
+              {
+                backgroundColor:
+                  colors.primary,
+              },
+            ])}
+          />
+        </View>
+      </View>
+    )}
+  </View>
+);
 }
+// REPLACE THESE BROKEN STYLES COMPLETELY
+// Your overlap issue is mainly from:
+// 1. negative marginTop on hero
+// 2. absolute floating layers without safe spacing
+// 3. footer + content not reserving enough height
+// 4. hero overlay fighting banner spacing
+// Humanity invents flexbox then spends 9 years defeating it with negative margins.
 
 const styles = StyleSheet.create({
-  headerActions: {
-    flexDirection: 'row',
-    gap: 8,
-    marginRight: 16,
+  // ======================================================
+  // ROOT
+  // ======================================================
+
+  screen: {
+    flex: 1,
   },
+
+  scrollContent: {
+    paddingBottom: 180,
+  },
+
+  // ======================================================
+  // FLOATING HEADER
+  // ======================================================
+
+  floatingTopBar: {
+  position: 'absolute',
+
+  top: 58,
+  left: 18,
+  right: 18,
+
+  zIndex: 9999,
+  elevation: 999,
+
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+},
+
+  floatingActionGroup: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+
   headerCircleBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    width: 44,
+    height: 44,
+
+    borderRadius: 22,
+
+    backgroundColor: 'rgba(15,23,42,0.55)',
+
     justifyContent: 'center',
     alignItems: 'center',
+
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+
+    // Ensure buttons can be pressed
+    pointerEvents: 'box-only',
   },
+
+  
+
+  // ======================================================
+  // HERO
+  // ======================================================
+
   coverContainer: {
-    height: 350,
     width: '100%',
+    height: 420,
+
+    overflow: 'hidden',
+
+    borderBottomLeftRadius: 34,
+    borderBottomRightRadius: 34,
+
+    backgroundColor: '#111827',
   },
+
   coverImage: {
     width: '100%',
     height: '100%',
+
+    resizeMode: 'cover',
   },
+
   coverGradient: {
     ...StyleSheet.absoluteFillObject,
   },
+
   shopMetaOverlay: {
     position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
+
+    left: 22,
+    right: 22,
+    bottom: 34,
   },
+
   badgeRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
+    alignItems: 'center',
+
+    gap: 10,
+
+    marginBottom: 14,
   },
+
   verifiedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    gap: 4,
+
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+
+    borderRadius: 999,
+
+    backgroundColor: 'rgba(16,185,129,0.16)',
+
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderColor: 'rgba(16,185,129,0.32)',
+
+    gap: 6,
   },
+
   verifiedText: {
-    color: Colors.accent,
-    fontSize: 10,
-    fontWeight: 'bold',
+    color: '#D1FAE5',
+
+    fontSize: 11,
+    fontWeight: '800',
   },
+
   trendingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.4)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    gap: 4,
+
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+
+    borderRadius: 999,
+
+    backgroundColor: 'rgba(239,68,68,0.2)',
+
+    gap: 6,
   },
+
   trendingText: {
     color: '#FFF',
-    fontSize: 10,
-    fontWeight: 'bold',
+
+    fontSize: 11,
+    fontWeight: '800',
   },
+
   shopName: {
-    ...Typography.h1,
+    fontSize: 34,
+
+    fontWeight: '900',
+
     color: '#FFF',
-    fontSize: 24,
+
+    letterSpacing: -1.2,
   },
+
   shopDesc: {
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 14,
+
+    lineHeight: 22,
+
+    color: 'rgba(255,255,255,0.85)',
+
+    marginTop: 8,
+
     fontWeight: '600',
   },
+
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+
+    marginTop: 14,
+  },
+
   ratingText: {
-    fontSize: 12,
-    color: Colors.secondary,
-    fontWeight: '600',
+    color: '#FFF',
+
     marginLeft: 6,
+
+    fontWeight: '800',
+
+    fontSize: 13,
   },
+
   dot: {
-    color: Colors.textMuted,
+    color: 'rgba(255,255,255,0.45)',
+
+    marginHorizontal: 8,
   },
+
   distanceText: {
+    color: 'rgba(255,255,255,0.82)',
+
     fontSize: 12,
-    color: Colors.textMuted,
+
+    fontWeight: '700',
   },
+
+  // ======================================================
+  // OFFER BANNER
+  // ======================================================
+
   boostBanner: {
-    paddingHorizontal: Spacing.md,
-    marginTop: -20,
+    paddingHorizontal: 18,
+
+    marginTop: 18,
   },
+
   bannerGradient: {
-    borderRadius: 20,
-    padding: 16,
-    elevation: 8,
+    borderRadius: 24,
+
+    padding: 18,
+
+    elevation: 5,
   },
+
   bannerContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
+
   bannerTitle: {
-    ...Typography.body,
-    fontWeight: '800',
     color: '#FFF',
+
+    fontSize: 17,
+
+    fontWeight: '900',
   },
+
   bannerSubtitle: {
-    ...Typography.caption,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 2,
+    color: 'rgba(255,255,255,0.88)',
+
+    marginTop: 4,
+
+    fontSize: 12,
+
+    lineHeight: 18,
+
+    fontWeight: '600',
   },
+
   promoCode: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+
+    borderRadius: 14,
+
+    backgroundColor: 'rgba(255,255,255,0.14)',
+
+    gap: 6,
   },
+
   codeText: {
     color: '#FFF',
-    fontWeight: 'bold',
-    fontSize: 12,
+
+    fontWeight: '900',
+
     letterSpacing: 1,
   },
-  productCard: {
-    padding: 0,
-    marginTop: 14,
+
+  // ======================================================
+  // SECTION
+  // ======================================================
+
+  sectionContainer: {
+    paddingHorizontal: 18,
+
+    marginTop: 28,
   },
+
+  sectionTitle: {
+    fontSize: 22,
+
+    fontWeight: '900',
+
+    marginBottom: 18,
+
+    letterSpacing: -0.5,
+  },
+
+  // ======================================================
+  // PRODUCT CARD
+  // ======================================================
+
+  productCard: {
+    marginBottom: 16,
+
+    borderRadius: 26,
+
+    overflow: 'hidden',
+
+    padding: 0,
+  },
+
   productMain: {
     flexDirection: 'row',
+
     padding: 14,
-    justifyContent: 'space-between',
   },
+
   productInfo: {
     flex: 1,
-    marginRight: 16,
+
+    justifyContent: 'center',
+
+    paddingRight: 12,
   },
+
   productName: {
-    ...Typography.h3,
-    fontSize: 15,
+    fontSize: 16,
+
+    lineHeight: 22,
+
+    fontWeight: '800',
   },
+
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
-    marginBottom: 8,
+
+    gap: 6,
+
+    marginTop: 8,
   },
+
   durationText: {
     fontSize: 11,
+
+    fontWeight: '600',
   },
+
   price: {
-    ...Typography.h3,
-    fontSize: 16,
+    fontSize: 22,
+
+    fontWeight: '900',
+
+    marginTop: 12,
   },
-  productImageContainer: {
-    width: 90,
-    alignItems: 'center',
-  },
+
+productImageContainer: {
+  width: 110,
+
+  alignItems: 'center',
+
+  paddingBottom: 16,
+
+  overflow: 'visible',
+},
+
   productImage: {
-    width: 90,
-    height: 90,
-    borderRadius: 14,
+    width: 120,
+    height: 120,
+
+    borderRadius: 22,
   },
+
   addBtn: {
     position: 'absolute',
-    bottom: -8,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 8,
+
+    bottom: -10,
+
+    backgroundColor: '#FFF',
+
+    borderRadius: 14,
+
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+
     borderWidth: 1,
-    elevation: 3,
+
+    elevation: 5,
   },
+
   addBtnText: {
-    fontWeight: '800',
     fontSize: 11,
+
+    fontWeight: '900',
   },
-  quantityContainer: {
-    position: 'absolute',
-    bottom: -8,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+quantityContainer: {
+  position: 'absolute',
+
+  bottom: -12,
+
+  width: 92,
+  height: 38,
+
+  borderRadius: 14,
+
+  backgroundColor: '#FFFFFF',
+
+  borderWidth: 1.5,
+
+  flexDirection: 'row',
+
+  alignItems: 'center',
+  justifyContent: 'space-between',
+
+  paddingHorizontal: 8,
+
+  shadowColor: '#000',
+
+  shadowOffset: {
+    width: 0,
+    height: 4,
+  },
+
+  shadowOpacity: 0.12,
+  shadowRadius: 10,
+
+  elevation: 6,
+
+  zIndex: 50,
+},
+
+qtyBtn: {
+  width: 26,
+  height: 26,
+
+  borderRadius: 13,
+
+  justifyContent: 'center',
+  alignItems: 'center',
+
+  backgroundColor: 'rgba(99,102,241,0.08)',
+},
+
+qtyText: {
+  fontSize: 12,
+  fontWeight: '900',
+  color: 'rgba(89, 106, 137, 1)',
+  minWidth: 20,
+
+  textAlign: 'center',
+},
+
+  // ======================================================
+  // INFO CARD
+  // ======================================================
+
+  infoCard: {
+    padding: 18,
+
+    borderRadius: 24,
+  },
+
+  infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    height: 28,
-    width: 76,
-    justifyContent: 'space-between',
-    paddingHorizontal: 4,
-    elevation: 3,
   },
-  qtyBtn: {
-    width: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+
+  infoTextWrap: {
+    marginLeft: 14,
+
+    flex: 1,
   },
-  qtyText: {
-    fontSize: 12,
+
+  infoTitle: {
+    fontSize: 14,
+
     fontWeight: '800',
   },
-  infoCard: {
-    padding: 16,
+
+  infoSub: {
+    fontSize: 12,
+
+    marginTop: 4,
+
+    lineHeight: 18,
   },
+
+  divider: {
+    height: 1,
+
+    marginVertical: 18,
+  },
+
+  // ======================================================
+  // CHECKOUT FOOTER
+  // ======================================================
+
   footer: {
     position: 'absolute',
+
+    left: 0,
+    right: 0,
     bottom: 0,
-    width: '100%',
-    padding: 16,
-    paddingBottom: 30,
+
+    paddingHorizontal: 16,
+    paddingBottom: 24,
   },
+
   footerGradient: {
     ...StyleSheet.absoluteFillObject,
   },
-  checkoutBar: {
-    flexDirection: 'row',
-    padding: 14,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    elevation: 8,
+
+ checkoutBar: {
+  borderRadius: 24,
+
+  paddingHorizontal: 18,
+  paddingVertical: 16,
+
+  borderWidth: 1,
+
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+
+  shadowColor: '#000',
+
+  shadowOffset: {
+    width: 0,
+    height: 10,
   },
-  itemCount: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
+
+  shadowOpacity: 0.16,
+  shadowRadius: 18,
+
+  elevation: 12,
+},
+
+
   totalPrice: {
-    ...Typography.h3,
-    fontSize: 18,
-    marginTop: 2,
+    fontSize: 24,
+
+    fontWeight: '900',
+
+    marginTop: 4,
   },
+
   bookNowBtn: {
-    height: 44,
-    paddingHorizontal: 24,
+    height: 52,
+
+    paddingHorizontal: 28,
+
+    borderRadius: 18,
   },
+
+  // ======================================================
+  // MODAL
+  // ======================================================
+
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
+
+    backgroundColor: 'rgba(0,0,0,0.6)',
+
+    justifyContent: 'flex-end',
   },
+
   modalCard: {
-    width: '100%',
-    borderRadius: 20,
-    padding: 18,
-    borderWidth: 1,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+
+    padding: 20,
+
+    maxHeight: '88%',
   },
+
   modalHeader: {
     flexDirection: 'row',
+
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+
+    marginBottom: 18,
   },
+
   modalTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  summaryItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 4,
-  },
-  summaryName: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  summaryPrice: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  totalLabel: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  totalValue: {
-    fontSize: 16,
+    fontSize: 20,
+
     fontWeight: '900',
   },
+
+  summaryItem: {
+    flexDirection: 'row',
+
+    justifyContent: 'space-between',
+
+    marginBottom: 10,
+  },
+
+  summaryName: {
+    fontSize: 13,
+
+    fontWeight: '600',
+  },
+
+  summaryPrice: {
+    fontSize: 13,
+
+    fontWeight: '800',
+  },
+itemCount: {
+
+  fontSize: 12,
+
+  fontWeight: '700',
+
+  marginBottom: 2,
+
+},
+  totalLabel: {
+    fontSize: 15,
+
+    fontWeight: '800',
+  },
+
+  totalValue: {
+    fontSize: 18,
+
+    fontWeight: '900',
+  },
+
   inputLabel: {
     fontSize: 11,
+
     fontWeight: '800',
+
+    marginBottom: 8,
+
     textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 4,
+
+    letterSpacing: 0.8,
   },
+
   modalInput: {
-    height: 44,
-    borderRadius: 10,
+    height: 52,
+
+    borderRadius: 16,
+
     borderWidth: 1,
-    paddingHorizontal: 12,
-    marginBottom: 12,
-    fontSize: 13,
+
+    paddingHorizontal: 14,
+
+    fontSize: 14,
+
+    marginBottom: 16,
   },
+
   paymentMethods: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 20,
+
+    gap: 10,
+
+    marginBottom: 22,
   },
+
   methodBtn: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
+
+    paddingVertical: 12,
+
+    borderRadius: 14,
+
     borderWidth: 1,
+
     alignItems: 'center',
-    justifyContent: 'center',
   },
+
   methodText: {
-    fontSize: 10,
+    fontSize: 11,
+
     fontWeight: '800',
-    textAlign: 'center',
   },
+
   modalButtons: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+
     gap: 10,
   },
+
   modalCancelBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
+    flex: 1,
+
+    height: 50,
+
+    borderRadius: 16,
+
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  modalCancelText: {
-    fontWeight: '700',
-    fontSize: 13,
-  },
+
   modalSubmitBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
+    flex: 1,
+
+    height: 50,
+
+    borderRadius: 16,
+
     justifyContent: 'center',
+    alignItems: 'center',
   },
+
+  modalCancelText: {
+    fontSize: 14,
+
+    fontWeight: '800',
+  },
+
   modalSubmitText: {
     color: '#FFF',
-    fontWeight: '800',
-    fontSize: 13,
-  }
+
+    fontSize: 14,
+
+    fontWeight: '900',
+  },
+  infoIconWrap: {
+  width: 42,
+  height: 42,
+
+  borderRadius: 14,
+
+  justifyContent: 'center',
+  alignItems: 'center',
+},
 });

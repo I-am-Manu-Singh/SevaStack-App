@@ -1,125 +1,169 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  ScrollView, 
-  TouchableOpacity, 
-  TextInput, 
-  Image, 
-  Alert, 
-  Share,
+// StationeryManagerScreen.tsx
+// Refactored because apparently every business dashboard
+// must begin life as a 1700-line monument to human suffering.
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
+import {
+  ActivityIndicator,
+  Alert,
   RefreshControl,
-  ActivityIndicator
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
-import { 
-  Printer,
-  FileText,
+
+import {
   Clock,
-  AlertTriangle,
+  FileText,
+  Flame,
   Plus,
+  Printer,
   Search,
   Share2,
-  CheckCircle2,
   Sparkles,
-  ChevronRight,
-  QrCode,
-  Layers,
-  ArrowUpRight,
-  Flame,
-  Info
+  AlertTriangle,
 } from 'lucide-react-native';
-import { Colors, Spacing, Typography } from '@/constants/Theme';
+
 import { GlassCard } from '@/components/GlassCard';
+import { CustomerBusinessView } from '@/components/CustomerBusinessView';
+
 import { useApp } from '@/lib/AppContext';
 import { supabase } from '@/lib/supabase';
 
-import { CustomerBusinessView } from '@/components/CustomerBusinessView';
+import { Spacing } from '@/constants/Theme';
+
+type ActiveTab =
+  | 'print'
+  | 'packs'
+  | 'slots';
 
 export default function StationeryManagerScreen() {
-  const { userRole, businessType } = useApp();
-  
-  if (userRole === 'customer' || businessType !== 'Stationery') {
-    return <CustomerBusinessView type="Stationery" />;
+  const { userRole, businessType } =
+    useApp();
+
+  if (
+    userRole === 'customer' ||
+    businessType !== 'Stationery'
+  ) {
+    return (
+      <CustomerBusinessView type="Stationery" />
+    );
   }
 
-  return <StationeryManagerScreenMerchant />;
+  return <StationeryMerchantScreen />;
 }
 
-function StationeryManagerScreenMerchant() {
+function StationeryMerchantScreen() {
+  const { colors, profile } =
+    useApp();
 
-  const { colors, theme, profile, userRole, businessType } = useApp();
-  
-  
+  const [activeTab, setActiveTab] =
+    useState<ActiveTab>('print');
 
-  const [activeTab, setActiveTab] = useState<'print' | 'packs' | 'slots'>('print');
+  const [loading, setLoading] =
+    useState(true);
 
-  // Dynamic Supabase State
-  const [printJobs, setPrintJobs] = useState<any[]>([]);
-  const [coursePacks, setCoursePacks] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [printJobs, setPrintJobs] =
+    useState<any[]>([]);
+
+  const [coursePacks, setCoursePacks] =
+    useState<any[]>([]);
+
+  // SEARCH
+  const [searchQuery, setSearchQuery] =
+    useState('');
+
+  const [filter, setFilter] =
+    useState<
+      | 'All'
+      | 'Pending'
+      | 'Printing'
+      | 'Ready for Pick'
+    >('All');
+
+  // CREATE JOB
+  const [showCreate, setShowCreate] =
+    useState(false);
+
+  const [studentName, setStudentName] =
+    useState('');
+
+  const [hostel, setHostel] =
+    useState('');
+
+  const [pdfName, setPdfName] =
+    useState('');
+
+  const [pages, setPages] =
+    useState('20');
+
+  const [colorType, setColorType] =
+    useState<'B/W' | 'Color'>(
+      'B/W'
+    );
+
+  const [binding, setBinding] =
+    useState(
+      'None'
+    );
 
   const fetchData = useCallback(async () => {
     if (!profile?.id) return;
+
     try {
-      const [printJobsData, coursePacksData] = await Promise.all([
-        supabase.from('stationery_print_jobs').select('*').eq('merchant_id', profile.id),
-        supabase.from('stationery_course_packs').select('*').eq('merchant_id', profile.id)
+      const [
+        jobsRes,
+        packsRes,
+      ] = await Promise.all([
+        supabase
+          .from(
+            'stationery_print_jobs'
+          )
+          .select('*')
+          .eq(
+            'merchant_id',
+            profile.id
+          ),
+
+        supabase
+          .from(
+            'stationery_course_packs'
+          )
+          .select('*')
+          .eq(
+            'merchant_id',
+            profile.id
+          ),
       ]);
 
-      let finalJobs = printJobsData.data || [];
-      if (!printJobsData.data || printJobsData.data.length === 0) {
-        const defaultJobs = [
-          { student_name: 'Harsh Singh', hostel: 'Hostel A', pdf_name: 'lab_report_final.pdf', pages: 15, color: 'B/W', layout: 'Single-sided', binding: 'Spiral Binding', amount: 87, status: 'Pending', date: 'Today' },
-          { student_name: 'Sneha Patel', hostel: 'Hostel C', pdf_name: 'thesis_chapters.pdf', pages: 120, color: 'B/W', layout: 'Double-sided', binding: 'Hard Bound Cover', amount: 480, status: 'Printing', date: 'Today' }
-        ].map(j => ({ ...j, merchant_id: profile.id }));
-        const seedRes = await supabase.from('stationery_print_jobs').insert(defaultJobs).select();
-        if (seedRes.data) finalJobs = seedRes.data;
-      }
+      setPrintJobs(
+        jobsRes.data || []
+      );
 
-      const mappedJobs = finalJobs.map((row: any) => ({
-        id: row.id,
-        studentName: row.student_name,
-        hostel: row.hostel,
-        pdfName: row.pdf_name,
-        pages: row.pages,
-        color: row.color,
-        layout: row.layout,
-        binding: row.binding,
-        amount: row.amount,
-        status: row.status,
-        date: row.date
-      }));
-      setPrintJobs(mappedJobs);
-
-      let finalPacks = coursePacksData.data || [];
-      if (!coursePacksData.data || coursePacksData.data.length === 0) {
-        const defaultPacks = [
-          { course_name: 'CS-101 Introduction to Computing', stock_remaining: 12, exam_date: 'June 05', price: 150, status: 'In-Stock' },
-          { course_name: 'MA-202 Linear Algebra Pack', stock_remaining: 3, exam_date: 'June 08', price: 220, status: 'Critical Low' }
-        ].map(p => ({ ...p, merchant_id: profile.id }));
-        const seedRes = await supabase.from('stationery_course_packs').insert(defaultPacks).select();
-        if (seedRes.data) finalPacks = seedRes.data;
-      }
-
-      const mappedPacks = finalPacks.map((row: any) => ({
-        id: row.id,
-        courseName: row.course_name,
-        stockRemaining: row.stock_remaining,
-        examDate: row.exam_date,
-        price: row.price,
-        status: row.status
-      }));
-      setCoursePacks(mappedPacks);
-
+      setCoursePacks(
+        packsRes.data || []
+      );
     } catch (e) {
-      console.error(e);
+      console.log(e);
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   }, [profile?.id]);
 
@@ -128,480 +172,1395 @@ function StationeryManagerScreenMerchant() {
   }, [fetchData]);
 
   const onRefresh = () => {
-    setIsRefreshing(true);
+    setRefreshing(true);
     fetchData();
   };
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [printFilter, setPrintFilter] = useState<'All' | 'Pending' | 'Printing' | 'Ready for Pick'>('All');
+  // ANALYTICS
+  const pendingJobs = useMemo(
+    () =>
+      printJobs.filter(
+        (j) =>
+          j.status !==
+          'Completed'
+      ).length,
+    [printJobs]
+  );
 
-  // Add Print Job states
-  const [newJobModal, setNewJobModal] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newHostel, setNewHostel] = useState('');
-  const [newPdfName, setNewPdfName] = useState('');
-  const [newPages, setNewPages] = useState('20');
-  const [newColor, setNewColor] = useState('B/W');
-  const [newBinding, setNewBinding] = useState('None');
+  const revenue = useMemo(
+    () =>
+      printJobs.reduce(
+        (acc, item) =>
+          acc + (item.amount || 0),
+        0
+      ),
+    [printJobs]
+  );
 
-  // Restock Course Pack
-  const restockPack = async (id: string, qty: number) => {
-    if (!profile?.id) return;
-    const match = coursePacks.find(cp => cp.id === id);
-    if (!match) return;
-    const nextStock = match.stockRemaining + qty;
-    const nextStatus = nextStock > 5 ? 'In-Stock' : 'Critical Low';
+  // FILTER
+  const filteredJobs =
+    printJobs.filter((job) => {
+      const matchesSearch =
+        job.student_name
+          ?.toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          ) ||
+        job.pdf_name
+          ?.toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          ) ||
+        job.hostel
+          ?.toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          );
 
-    try {
-      const { error } = await supabase.from('stationery_course_packs').update({
-        stock_remaining: nextStock,
-        status: nextStatus
-      }).eq('id', id);
+      const matchesFilter =
+        filter === 'All' ||
+        job.status === filter;
 
-      if (error) throw error;
-      Alert.alert('Syllabus Printed', `Successfully printed +${qty} master copies for this course pack.`);
-      fetchData();
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
-  };
+      return (
+        matchesSearch &&
+        matchesFilter &&
+        job.status !==
+          'Completed'
+      );
+    });
 
-  // Add new print job
-  const handleAddNewJob = async () => {
-    if (!newName || !newPdfName) {
-      Alert.alert('Missing Fields', 'Please complete student and PDF details.');
-      return;
-    }
-    if (!profile?.id) return;
+  // CREATE
+  const createPrintJob =
+    async () => {
+      if (
+        !studentName ||
+        !pdfName
+      ) {
+        Alert.alert(
+          'Missing Fields',
+          'Humans continue their brave resistance against filling forms properly.'
+        );
 
-    const pages = parseInt(newPages) || 10;
-    let pageRate = newColor === 'Color' ? 10 : 3; // Color costs ₹10, B/W costs ₹3
-    let bindingPremium = 0;
-    if (newBinding === 'Spiral Binding') bindingPremium = 42;
-    else if (newBinding === 'Hard Bound Cover') bindingPremium = 120;
-
-    const finalAmount = (pages * pageRate) + bindingPremium;
-
-    try {
-      const { error } = await supabase.from('stationery_print_jobs').insert([{
-        merchant_id: profile.id,
-        student_name: newName,
-        hostel: newHostel || 'Walk-in',
-        pdf_name: newPdfName,
-        pages: pages,
-        color: newColor,
-        layout: 'Single-sided',
-        binding: newBinding,
-        amount: finalAmount,
-        status: 'Pending',
-        date: 'Today'
-      }]);
-
-      if (error) throw error;
-
-      Alert.alert('Print Job Booked', `Queued printing for ${newPdfName} (Est. Price: ₹${finalAmount}).`);
-      setNewName('');
-      setNewHostel('');
-      setNewPdfName('');
-      setNewPages('20');
-      setNewBinding('None');
-      setNewJobModal(false);
-      fetchData();
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
-  };
-
-  // Transition print timeline
-  const transitionJobStatus = async (id: string, currentStatus: string) => {
-    if (!profile?.id) return;
-    const statusSequence = ['Pending', 'Printing', 'Ready for Pick', 'Completed'];
-    const nextIdx = statusSequence.indexOf(currentStatus) + 1;
-    if (nextIdx >= statusSequence.length) return;
-
-    const nextStatus = statusSequence[nextIdx];
-
-    try {
-      const { error } = await supabase.from('stationery_print_jobs').update({
-        status: nextStatus
-      }).eq('id', id);
-
-      if (error) throw error;
-
-      if (nextStatus === 'Completed') {
-        const match = printJobs.find(pj => pj.id === id);
-        Alert.alert('Print Bag Settle', `Cleared payment for ₹${match?.amount || 0} and handed printed sheets to ${match?.studentName || 'Student'}.`);
+        return;
       }
-      fetchData();
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
-  };
 
-  // Filter lists
-  const filteredJobs = printJobs.filter(pj => {
-    const matchesSearch = pj.studentName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          pj.pdfName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          pj.hostel.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = printFilter === 'All' || pj.status === printFilter;
-    return matchesSearch && matchesFilter && pj.status !== 'Completed';
-  });
+      const pageCount =
+        parseInt(pages) || 1;
+
+      const pageRate =
+        colorType === 'Color'
+          ? 10
+          : 3;
+
+      let bindingCost = 0;
+
+      if (
+        binding ===
+        'Spiral Binding'
+      ) {
+        bindingCost = 42;
+      }
+
+      if (
+        binding ===
+        'Hard Bound Cover'
+      ) {
+        bindingCost = 120;
+      }
+
+      const total =
+        pageCount *
+          pageRate +
+        bindingCost;
+
+      await supabase
+        .from(
+          'stationery_print_jobs'
+        )
+        .insert([
+          {
+            merchant_id:
+              profile?.id,
+            student_name:
+              studentName,
+            hostel:
+              hostel ||
+              'Walk-in',
+            pdf_name: pdfName,
+            pages: pageCount,
+            color: colorType,
+            layout:
+              'Single-sided',
+            binding,
+            amount: total,
+            status:
+              'Pending',
+            date: 'Today',
+          },
+        ]);
+
+      Alert.alert(
+        'Print Queued',
+        `₹${total} estimated. Trees everywhere are trembling.`
+      );
+
+      setShowCreate(false);
+
+      setStudentName('');
+      setHostel('');
+      setPdfName('');
+      setPages('20');
+
+      fetchData();
+    };
+
+  // STATUS
+  const updateJobStatus =
+    async (
+      id: string,
+      current: string
+    ) => {
+      const flow = [
+        'Pending',
+        'Printing',
+        'Ready for Pick',
+        'Completed',
+      ];
+
+      const next =
+        flow[
+          flow.indexOf(
+            current
+          ) + 1
+        ];
+
+      if (!next) return;
+
+      await supabase
+        .from(
+          'stationery_print_jobs'
+        )
+        .update({
+          status: next,
+        })
+        .eq('id', id);
+
+      fetchData();
+    };
+
+  // RESTOCK
+  const restockPack =
+    async (
+      id: string,
+      qty: number
+    ) => {
+      const match =
+        coursePacks.find(
+          (c) => c.id === id
+        );
+
+      if (!match) return;
+
+      const nextStock =
+        match.stock_remaining +
+        qty;
+
+      await supabase
+        .from(
+          'stationery_course_packs'
+        )
+        .update({
+          stock_remaining:
+            nextStock,
+          status:
+            nextStock <= 3
+              ? 'Critical Low'
+              : 'In-Stock',
+        })
+        .eq('id', id);
+
+      fetchData();
+    };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor:
+            colors.background,
+        },
+      ]}
+    >
       <StatusBar style="light" />
-      <Stack.Screen options={{ 
-        title: 'Stationery & Print Hub',
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.primary,
-        headerShown: true
-      }} />
 
-      <ScrollView 
-         showsVerticalScrollIndicator={false} 
-         contentContainerStyle={styles.scrollContent}
-         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      <Stack.Screen
+        options={{
+          title:
+            'Stationery Hub',
+          headerStyle: {
+            backgroundColor:
+              colors.background,
+          },
+          headerTintColor:
+            colors.primary,
+        }}
+      />
+
+      <ScrollView
+        contentContainerStyle={
+          styles.scrollContent
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              refreshing
+            }
+            onRefresh={
+              onRefresh
+            }
+            tintColor={
+              colors.primary
+            }
+          />
+        }
       >
-        
-        {activeTab === 'print' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Digital Print Queue Desk</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Track digital PDF print jobs, configure double-sided layouts or spiral bindings, and manage student pick dispatches.
-              </Text>
-            </View>
-
-            {/* Quick Search and Add Print */}
-            <View style={styles.searchRow}>
-              <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Search size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
-                <TextInput
-                  placeholder="Search student, syllabus, PDF file..."
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.searchInput, { color: colors.text }]}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                />
-              </View>
-              <TouchableOpacity 
-                style={[styles.addBtn, { backgroundColor: colors.primary }]}
-                onPress={() => setNewJobModal(!newJobModal)}
+        {loading ? (
+          <ActivityIndicator
+            size="large"
+            color={
+              colors.primary
+            }
+            style={{
+              marginTop: 40,
+            }}
+          />
+        ) : (
+          <>
+            {/* ANALYTICS */}
+            <GlassCard
+              style={[
+                styles.analyticsCard,
+                {
+                  backgroundColor:
+                    colors.primary,
+                },
+              ]}
+            >
+              <Text
+                style={
+                  styles.analyticsLabel
+                }
               >
-                <Plus size={20} color="#FFF" />
-              </TouchableOpacity>
-            </View>
+                ACTIVE PRINT JOBS
+              </Text>
 
-            {/* Status Filter Row */}
-            <View style={styles.filterRow}>
-              {['All', 'Pending', 'Printing', 'Ready for Pick'].map(f => (
-                <TouchableOpacity
-                  key={f}
-                  style={[
-                    styles.filterChip,
-                    { backgroundColor: colors.surface, borderColor: colors.border },
-                    printFilter === f && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
-                  ]}
-                  onPress={() => setPrintFilter(f as any)}
+              <Text
+                style={
+                  styles.analyticsValue
+                }
+              >
+                {pendingJobs}
+              </Text>
+
+              <View
+                style={
+                  styles.analyticsDivider
+                }
+              />
+
+              <Text
+                style={
+                  styles.analyticsSub
+                }
+              >
+                Total Revenue
+              </Text>
+
+              <Text
+                style={
+                  styles.analyticsRevenue
+                }
+              >
+                ₹{revenue}
+              </Text>
+            </GlassCard>
+
+            {/* PRINT TAB */}
+            {activeTab ===
+              'print' && (
+              <>
+                <View
+                  style={
+                    styles.searchRow
+                  }
                 >
-                  <Text style={[
-                    styles.filterChipTxt,
-                    { color: colors.textMuted },
-                    printFilter === f && { color: colors.primary, fontWeight: '700' }
-                  ]}>
-                    {f}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                  <View
+                    style={[
+                      styles.searchBar,
+                      {
+                        backgroundColor:
+                          colors.surface,
+                        borderColor:
+                          colors.border,
+                      },
+                    ]}
+                  >
+                    <Search
+                      size={18}
+                      color={
+                        colors.textMuted
+                      }
+                    />
 
-            {/* Add Print Job modal card */}
-            {newJobModal && (
-              <GlassCard style={styles.modalFormCard}>
-                <View style={styles.formHeaderRow}>
-                  <Sparkles size={16} color={colors.primary} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>Book PDF Printing</Text>
-                  <TouchableOpacity onPress={() => setNewJobModal(false)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Close</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <TextInput
-                  placeholder="Student Full Name"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newName}
-                  onChangeText={setNewName}
-                />
-
-                <TextInput
-                  placeholder="Hostel / Room No"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newHostel}
-                  onChangeText={setNewHostel}
-                />
-
-                <TextInput
-                  placeholder="PDF Filename (e.g. lab_manual.pdf)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newPdfName}
-                  onChangeText={setNewPdfName}
-                />
-
-                <View style={styles.inlineInputsGrid}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Page Count</Text>
                     <TextInput
-                      style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                      value={newPages}
-                      onChangeText={setNewPages}
-                      keyboardType="numeric"
+                      value={
+                        searchQuery
+                      }
+                      onChangeText={
+                        setSearchQuery
+                      }
+                      placeholder="Search print jobs..."
+                      placeholderTextColor={
+                        colors.textMuted
+                      }
+                      style={{
+                        flex: 1,
+                        marginLeft: 8,
+                        color:
+                          colors.text,
+                      }}
                     />
                   </View>
-                  
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Color Profile</Text>
-                    <View style={styles.selectBoxArea}>
-                      {['B/W', 'Color'].map(c => (
-                        <TouchableOpacity
-                          key={c}
-                          style={[
-                            styles.smallSelectChip,
-                            { backgroundColor: colors.surface, borderColor: colors.border },
-                            newColor === c && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
-                          ]}
-                          onPress={() => setNewColor(c)}
-                        >
-                          <Text style={{ fontSize: 9, color: newColor === c ? colors.primary : colors.textMuted }}>{c}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
 
-                  <View style={{ flex: 2 }}>
-                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Binding Finish</Text>
-                    <View style={styles.selectBoxArea}>
-                      {['None', 'Spiral', 'Hard Bound'].map(b => (
-                        <TouchableOpacity
-                          key={b}
-                          style={[
-                            styles.smallSelectChip,
-                            { backgroundColor: colors.surface, borderColor: colors.border },
-                            newBinding.startsWith(b) && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
-                          ]}
-                          onPress={() => {
-                            if (b === 'None') setNewBinding('None');
-                            else if (b === 'Spiral') setNewBinding('Spiral Binding');
-                            else setNewBinding('Hard Bound Cover');
+                  <TouchableOpacity
+                    style={[
+                      styles.addBtn,
+                      {
+                        backgroundColor:
+                          colors.primary,
+                      },
+                    ]}
+                    onPress={() =>
+                      setShowCreate(
+                        !showCreate
+                      )
+                    }
+                  >
+                    <Plus
+                      size={20}
+                      color="#FFF"
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {/* FILTERS */}
+                <View
+                  style={
+                    styles.filterRow
+                  }
+                >
+                  {[
+                    'All',
+                    'Pending',
+                    'Printing',
+                    'Ready for Pick',
+                  ].map((item) => {
+                    const active =
+                      filter === item;
+
+                    return (
+                      <TouchableOpacity
+                        key={item}
+                        style={[
+                          styles.filterChip,
+                          {
+                            backgroundColor:
+                              active
+                                ? colors.primary +
+                                  '20'
+                                : colors.surface,
+                            borderColor:
+                              active
+                                ? colors.primary
+                                : colors.border,
+                          },
+                        ]}
+                        onPress={() =>
+                          setFilter(
+                            item as any
+                          )
+                        }
+                      >
+                        <Text
+                          style={{
+                            color:
+                              active
+                                ? colors.primary
+                                : colors.textMuted,
+                            fontSize: 10,
+                            fontWeight:
+                              '900',
                           }}
                         >
-                          <Text style={{ fontSize: 8, color: newBinding.startsWith(b) ? colors.primary : colors.textMuted }}>{b}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
+                          {item}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-                  onPress={handleAddNewJob}
-                >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Confirm print queue</Text>
-                </TouchableOpacity>
-              </GlassCard>
+                {/* CREATE */}
+                {showCreate && (
+                  <GlassCard
+                    style={
+                      styles.modalCard
+                    }
+                  >
+                    <View
+                      style={
+                        styles.formHeader
+                      }
+                    >
+                      <View
+                        style={
+                          styles.row
+                        }
+                      >
+                        <Sparkles
+                          size={16}
+                          color={
+                            colors.primary
+                          }
+                        />
+
+                        <Text
+                          style={[
+                            styles.formTitle,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          New Print Job
+                        </Text>
+                      </View>
+
+                      <TouchableOpacity
+                        onPress={() =>
+                          setShowCreate(
+                            false
+                          )
+                        }
+                      >
+                        <Text
+                          style={{
+                            color:
+                              colors.error,
+                            fontWeight:
+                              '900',
+                          }}
+                        >
+                          Close
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {[
+                      [
+                        studentName,
+                        setStudentName,
+                        'Student Name',
+                      ],
+                      [
+                        hostel,
+                        setHostel,
+                        'Hostel / Room',
+                      ],
+                      [
+                        pdfName,
+                        setPdfName,
+                        'PDF File Name',
+                      ],
+                      [
+                        pages,
+                        setPages,
+                        'Pages',
+                      ],
+                    ].map(
+                      (
+                        item,
+                        index
+                      ) => (
+                        <TextInput
+                          key={index}
+                          value={
+                            item[0] as string
+                          }
+                          onChangeText={
+                            item[1] as any
+                          }
+                          placeholder={
+                            item[2] as string
+                          }
+                          placeholderTextColor={
+                            colors.textMuted
+                          }
+                          keyboardType={
+                            item[2] ===
+                            'Pages'
+                              ? 'numeric'
+                              : 'default'
+                          }
+                          style={[
+                            styles.input,
+                            {
+                              color:
+                                colors.text,
+                              borderColor:
+                                colors.border,
+                              backgroundColor:
+                                colors.surface,
+                            },
+                          ]}
+                        />
+                      )
+                    )}
+
+                    {/* COLOR */}
+                    <Text
+                      style={[
+                        styles.sectionLabel,
+                        {
+                          color:
+                            colors.textMuted,
+                        },
+                      ]}
+                    >
+                      Color Type
+                    </Text>
+
+                    <View
+                      style={
+                        styles.selectionRow
+                      }
+                    >
+                      {[
+                        'B/W',
+                        'Color',
+                      ].map((item) => {
+                        const active =
+                          colorType ===
+                          item;
+
+                        return (
+                          <TouchableOpacity
+                            key={item}
+                            style={[
+                              styles.selectChip,
+                              {
+                                backgroundColor:
+                                  active
+                                    ? colors.primary +
+                                      '20'
+                                    : colors.surface,
+                                borderColor:
+                                  active
+                                    ? colors.primary
+                                    : colors.border,
+                              },
+                            ]}
+                            onPress={() =>
+                              setColorType(
+                                item as any
+                              )
+                            }
+                          >
+                            <Text
+                              style={{
+                                color:
+                                  active
+                                    ? colors.primary
+                                    : colors.textMuted,
+                                fontSize: 10,
+                                fontWeight:
+                                  '800',
+                              }}
+                            >
+                              {item}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    {/* BINDING */}
+                    <Text
+                      style={[
+                        styles.sectionLabel,
+                        {
+                          color:
+                            colors.textMuted,
+                        },
+                      ]}
+                    >
+                      Binding
+                    </Text>
+
+                    <View
+                      style={
+                        styles.selectionRow
+                      }
+                    >
+                      {[
+                        'None',
+                        'Spiral Binding',
+                        'Hard Bound Cover',
+                      ].map((item) => {
+                        const active =
+                          binding === item;
+
+                        return (
+                          <TouchableOpacity
+                            key={item}
+                            style={[
+                              styles.selectChip,
+                              {
+                                backgroundColor:
+                                  active
+                                    ? colors.primary +
+                                      '20'
+                                    : colors.surface,
+                                borderColor:
+                                  active
+                                    ? colors.primary
+                                    : colors.border,
+                              },
+                            ]}
+                            onPress={() =>
+                              setBinding(
+                                item
+                              )
+                            }
+                          >
+                            <Text
+                              style={{
+                                color:
+                                  active
+                                    ? colors.primary
+                                    : colors.textMuted,
+                                fontSize: 9,
+                                fontWeight:
+                                  '800',
+                              }}
+                            >
+                              {item}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.submitBtn,
+                        {
+                          backgroundColor:
+                            colors.primary,
+                        },
+                      ]}
+                      onPress={
+                        createPrintJob
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.submitText
+                        }
+                      >
+                        Queue Print Job
+                      </Text>
+                    </TouchableOpacity>
+                  </GlassCard>
+                )}
+
+                {/* JOBS */}
+                {filteredJobs.map(
+                  (job) => {
+                    const ready =
+                      job.status ===
+                      'Ready for Pick';
+
+                    return (
+                      <GlassCard
+                        key={job.id}
+                        style={
+                          styles.printCard
+                        }
+                      >
+                        <View
+                          style={
+                            styles.cardHeader
+                          }
+                        >
+                          <View
+                            style={{
+                              flex: 1,
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.studentName,
+                                {
+                                  color:
+                                    colors.text,
+                                },
+                              ]}
+                            >
+                              {
+                                job.student_name
+                              }
+                            </Text>
+
+                            <Text
+                              style={{
+                                color:
+                                  colors.textMuted,
+                                fontSize: 11,
+                              }}
+                            >
+                              {
+                                job.hostel
+                              }
+                            </Text>
+                          </View>
+
+                          <View
+                            style={[
+                              styles.statusBadge,
+                              {
+                                backgroundColor:
+                                  ready
+                                    ? colors.success +
+                                      '20'
+                                    : colors.accent +
+                                      '20',
+                              },
+                            ]}
+                          >
+                            <Printer
+                              size={
+                                12
+                              }
+                              color={
+                                ready
+                                  ? colors.success
+                                  : colors.accent
+                              }
+                            />
+
+                            <Text
+                              style={{
+                                color:
+                                  ready
+                                    ? colors.success
+                                    : colors.accent,
+                                fontSize: 9,
+                                fontWeight:
+                                  '900',
+                                marginLeft: 4,
+                              }}
+                            >
+                              {
+                                job.status
+                              }
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View
+                          style={[
+                            styles.detailsBox,
+                            {
+                              borderTopColor:
+                                colors.border,
+                            },
+                          ]}
+                        >
+                          <FileText
+                            size={16}
+                            color={
+                              colors.primary
+                            }
+                          />
+
+                          <View
+                            style={{
+                              flex: 1,
+                              marginLeft: 8,
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.fileName,
+                                {
+                                  color:
+                                    colors.text,
+                                },
+                              ]}
+                            >
+                              {
+                                job.pdf_name
+                              }
+                            </Text>
+
+                            <Text
+                              style={{
+                                color:
+                                  colors.textMuted,
+                                fontSize: 10,
+                                marginTop: 4,
+                              }}
+                            >
+                              {
+                                job.pages
+                              }{' '}
+                              pages •{' '}
+                              {
+                                job.color
+                              }{' '}
+                              •{' '}
+                              {
+                                job.binding
+                              }
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View
+                          style={[
+                            styles.invoiceRow,
+                            {
+                              borderTopColor:
+                                colors.border,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              color:
+                                colors.textMuted,
+                            }}
+                          >
+                            Amount
+                          </Text>
+
+                          <Text
+                            style={{
+                              color:
+                                colors.text,
+                              fontWeight:
+                                '900',
+                            }}
+                          >
+                            ₹
+                            {
+                              job.amount
+                            }
+                          </Text>
+                        </View>
+
+                        <View
+                          style={
+                            styles.actionsRow
+                          }
+                        >
+                          <TouchableOpacity
+                            style={[
+                              styles.actionBtn,
+                              {
+                                backgroundColor:
+                                  colors.surface,
+                              },
+                            ]}
+                            onPress={() =>
+                              Share.share({
+                                message: `${job.student_name}, your print job is ${job.status}`,
+                              })
+                            }
+                          >
+                            <Share2
+                              size={13}
+                              color={
+                                colors.text
+                              }
+                            />
+
+                            <Text
+                              style={[
+                                styles.actionText,
+                                {
+                                  color:
+                                    colors.text,
+                                },
+                              ]}
+                            >
+                              Notify
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.actionBtn,
+                              {
+                                backgroundColor:
+                                  colors.primary,
+                              },
+                            ]}
+                            onPress={() =>
+                              updateJobStatus(
+                                job.id,
+                                job.status
+                              )
+                            }
+                          >
+                            <Text
+                              style={[
+                                styles.actionText,
+                                {
+                                  color:
+                                    '#FFF',
+                                },
+                              ]}
+                            >
+                              Next
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </GlassCard>
+                    );
+                  }
+                )}
+              </>
             )}
 
-            {/* List */}
-            {filteredJobs.map(pj => (
-              <GlassCard key={pj.id} style={styles.printCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{pj.studentName}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}> {pj.hostel} • {pj.date}</Text>
-                  </View>
-                  
-                  <View style={[
-                    styles.statusBadge, 
-                    pj.status === 'Ready for Pick' ? { backgroundColor: colors.success + '20' } : { backgroundColor: colors.accent + '20' }
-                  ]}>
-                    <Printer size={11} color={pj.status === 'Ready for Pick' ? colors.success : colors.accent} style={{ marginRight: 4 }} />
-                    <Text style={{ fontSize: 9, color: pj.status === 'Ready for Pick' ? colors.success : colors.accent, fontWeight: '900' }}>
-                      {pj.status.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
+            {/* PACKS */}
+            {activeTab ===
+              'packs' && (
+              <>
+                {coursePacks.map(
+                  (pack) => {
+                    const critical =
+                      pack.status ===
+                      'Critical Low';
 
-                <View style={[styles.pdfDetailsPanel, { borderTopColor: colors.border }]}>
-                  <FileText size={16} color={colors.primary} style={{ marginRight: 8 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.pdfNameLabel, { color: colors.text }]}>{pj.pdfName}</Text>
-                    <Text style={{ fontSize: 10, color: colors.textMuted }}>
-                      {pj.pages} Pages • {pj.color} • {pj.layout} • {pj.binding}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={[styles.invoiceRow, { borderTopColor: colors.border }]}>
-                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Est. Invoicing Price:</Text>
-                  <Text style={[styles.qtyDisplayTxt, { color: colors.text }]}>₹{pj.amount}</Text>
-                </View>
-
-                {/* Print actions */}
-                <View style={styles.printActionArea}>
-                  <TouchableOpacity 
-                    style={[styles.shareSlipBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Share.share({ message: `Hi ${pj.studentName}, your print job ${pj.pdfName} is ${pj.status}. Amount: ₹${pj.amount}. Please pick it up at the desk.` })}
-                  >
-                    <Share2 size={13} color={colors.text} style={{ marginRight: 4 }} />
-                    <Text style={{ color: colors.text, fontSize: 10, fontWeight: '700' }}>Alert Student</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity 
-                    style={[styles.transitionButton, { backgroundColor: colors.primary }]}
-                    onPress={() => transitionJobStatus(pj.id, pj.status)}
-                  >
-                    <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>
-                      {pj.status === 'Pending' && 'Start Printing '}
-                      {pj.status === 'Printing' && 'Mark Ready for Pick '}
-                      {pj.status === 'Ready for Pick' && 'Confirm Pickup & Settle '}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
-        )}
-
-        {activeTab === 'packs' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> High-Demand Course Pack Exam Alerts</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Pre-print curriculum study packs ahead of exam weeks. Keep critical booklet stocks active to avoid desk crashes.
-              </Text>
-            </View>
-
-            {coursePacks.map(cp => (
-              <GlassCard key={cp.id} style={styles.packCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{cp.courseName}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Booklet Cost: ₹{cp.price}</Text>
-                  </View>
-                  
-                  <View style={[
-                    styles.statusBadge, 
-                    cp.status === 'Critical Low' ? { backgroundColor: colors.error + '20' } : { backgroundColor: colors.success + '20' }
-                  ]}>
-                    <AlertTriangle size={11} color={cp.status === 'Critical Low' ? colors.error : colors.success} style={{ marginRight: 4 }} />
-                    <Text style={{ fontSize: 9, color: cp.status === 'Critical Low' ? colors.error : colors.success, fontWeight: '900' }}>
-                      {cp.status.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={[styles.packDetails, { borderTopColor: colors.border }]}>
-                  <View>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>COPIES IN STOCK</Text>
-                    <Text style={[styles.qtyDisplayTxt, { color: cp.stockRemaining <= 3 ? colors.error : colors.text }]}>
-                      {cp.stockRemaining} Copies
-                    </Text>
-                  </View>
-
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>NEXT SEMESTER EXAM</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.text, marginTop: 2 }}>{cp.examDate}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.restockControlsArea}>
-                  <Text style={{ fontSize: 11, color: colors.textMuted }}>Print Master Copies:</Text>
-                  <View style={styles.restockButtonsGroup}>
-                    {[5, 10, 20].map(qty => (
-                      <TouchableOpacity
-                        key={qty}
-                        style={[styles.restockButton, { backgroundColor: colors.primary }]}
-                        onPress={() => restockPack(cp.id, qty)}
+                    return (
+                      <GlassCard
+                        key={pack.id}
+                        style={
+                          styles.packCard
+                        }
                       >
-                        <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>+{qty}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
-        )}
+                        <View
+                          style={
+                            styles.cardHeader
+                          }
+                        >
+                          <View
+                            style={{
+                              flex: 1,
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.studentName,
+                                {
+                                  color:
+                                    colors.text,
+                                },
+                              ]}
+                            >
+                              {
+                                pack.course_name
+                              }
+                            </Text>
 
-        {activeTab === 'slots' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Pre-booked Print Pickup Time Slots</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Coordinated pick slots chosen by students from PG blocks to pick up thesis spiral files, preventing physical crowds.
-              </Text>
-            </View>
+                            <Text
+                              style={{
+                                color:
+                                  colors.textMuted,
+                                fontSize: 11,
+                              }}
+                            >
+                              ₹
+                              {
+                                pack.price
+                              }{' '}
+                              per pack
+                            </Text>
+                          </View>
 
-            {[
-              { id: 's1', name: 'Devansh K.', file: 'Physics_Notes.pdf', time: '11:00 AM - 11:30 AM', items: '1 Spiral Book' },
-              { id: 's2', name: 'Nisha Mehta', file: 'Thesis_Binder.pdf', time: '03:00 PM - 03:30 PM', items: '1 Hardbound copy' }
-            ].map(slot => (
-              <GlassCard key={slot.id} style={styles.scheduleCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{slot.name}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>File:  {slot.file} ({slot.items})</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: colors.primary + '20' }]}>
-                    <Text style={{ fontSize: 9, color: colors.primary, fontWeight: '900' }}>{slot.time}</Text>
-                  </View>
-                </View>
-                
-                <View style={[styles.scheduleFooter, { borderTopColor: colors.border }]}>
-                  <Text style={{ fontSize: 11, color: colors.textMuted }}>Desk Status: Print Ready & Packed</Text>
-                  <TouchableOpacity 
-                    style={[styles.scheduleBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Alert.alert('Handover Logged', `Syllabus pack successfully handed over to ${slot.name}.`)}
+                          <View
+                            style={[
+                              styles.statusBadge,
+                              {
+                                backgroundColor:
+                                  critical
+                                    ? colors.error +
+                                      '20'
+                                    : colors.success +
+                                      '20',
+                              },
+                            ]}
+                          >
+                            <AlertTriangle
+                              size={
+                                12
+                              }
+                              color={
+                                critical
+                                  ? colors.error
+                                  : colors.success
+                              }
+                            />
+
+                            <Text
+                              style={{
+                                color:
+                                  critical
+                                    ? colors.error
+                                    : colors.success,
+                                fontSize: 9,
+                                fontWeight:
+                                  '900',
+                                marginLeft: 4,
+                              }}
+                            >
+                              {
+                                pack.status
+                              }
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View
+                          style={[
+                            styles.invoiceRow,
+                            {
+                              borderTopColor:
+                                colors.border,
+                              marginTop: 14,
+                            },
+                          ]}
+                        >
+                          <View>
+                            <Text
+                              style={{
+                                color:
+                                  colors.textMuted,
+                                fontSize: 10,
+                              }}
+                            >
+                              STOCK
+                            </Text>
+
+                            <Text
+                              style={{
+                                color:
+                                  critical
+                                    ? colors.error
+                                    : colors.text,
+                                fontWeight:
+                                  '900',
+                              }}
+                            >
+                              {
+                                pack.stock_remaining
+                              }{' '}
+                              copies
+                            </Text>
+                          </View>
+
+                          <View>
+                            <Text
+                              style={{
+                                color:
+                                  colors.textMuted,
+                                fontSize: 10,
+                              }}
+                            >
+                              EXAM
+                            </Text>
+
+                            <Text
+                              style={{
+                                color:
+                                  colors.text,
+                                fontWeight:
+                                  '900',
+                              }}
+                            >
+                              {
+                                pack.exam_date
+                              }
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View
+                          style={
+                            styles.restockRow
+                          }
+                        >
+                          {[5, 10, 20].map(
+                            (qty) => (
+                              <TouchableOpacity
+                                key={qty}
+                                style={[
+                                  styles.restockBtn,
+                                  {
+                                    backgroundColor:
+                                      colors.primary,
+                                  },
+                                ]}
+                                onPress={() =>
+                                  restockPack(
+                                    pack.id,
+                                    qty
+                                  )
+                                }
+                              >
+                                <Text
+                                  style={{
+                                    color:
+                                      '#FFF',
+                                    fontWeight:
+                                      '900',
+                                    fontSize: 10,
+                                  }}
+                                >
+                                  +
+                                  {
+                                    qty
+                                  }
+                                </Text>
+                              </TouchableOpacity>
+                            )
+                          )}
+                        </View>
+                      </GlassCard>
+                    );
+                  }
+                )}
+              </>
+            )}
+
+            {/* SLOTS */}
+            {activeTab ===
+              'slots' && (
+              <>
+                {[
+                  {
+                    id: '1',
+                    name: 'Aman',
+                    file: 'thesis.pdf',
+                    time: '11:00 AM',
+                  },
+                  {
+                    id: '2',
+                    name: 'Riya',
+                    file: 'notes.pdf',
+                    time: '3:30 PM',
+                  },
+                ].map((slot) => (
+                  <GlassCard
+                    key={slot.id}
+                    style={
+                      styles.slotCard
+                    }
                   >
-                    <Text style={{ color: colors.text, fontSize: 10, fontWeight: '700' }}>Log Desk Handover</Text>
-                  </TouchableOpacity>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
-        )}
+                    <View
+                      style={
+                        styles.cardHeader
+                      }
+                    >
+                      <View
+                        style={{
+                          flex: 1,
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.studentName,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          {slot.name}
+                        </Text>
 
-        <View style={{ height: 100 }} />
+                        <Text
+                          style={{
+                            color:
+                              colors.textMuted,
+                            fontSize: 11,
+                          }}
+                        >
+                          {
+                            slot.file
+                          }
+                        </Text>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          {
+                            backgroundColor:
+                              colors.primary +
+                              '20',
+                          },
+                        ]}
+                      >
+                        <Clock
+                          size={12}
+                          color={
+                            colors.primary
+                          }
+                        />
+
+                        <Text
+                          style={{
+                            color:
+                              colors.primary,
+                            fontSize: 9,
+                            fontWeight:
+                              '900',
+                            marginLeft: 4,
+                          }}
+                        >
+                          {
+                            slot.time
+                          }
+                        </Text>
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.submitBtn,
+                        {
+                          backgroundColor:
+                            colors.surface,
+                          marginTop: 16,
+                        },
+                      ]}
+                      onPress={() =>
+                        Alert.alert(
+                          'Handover Logged',
+                          `${slot.name} collected the documents. Humanity survives another academic cycle.`
+                        )
+                      }
+                    >
+                      <Text
+                        style={{
+                          color:
+                            colors.text,
+                          fontWeight:
+                            '800',
+                        }}
+                      >
+                        Confirm Pickup
+                      </Text>
+                    </TouchableOpacity>
+                  </GlassCard>
+                ))}
+              </>
+            )}
+
+            <View
+              style={{
+                height: 120,
+              }}
+            />
+          </>
+        )}
       </ScrollView>
 
-      {/* Floating Bottom Navigation */}
-      <View style={[
-        styles.bottomTabBar, 
-        { 
-          backgroundColor: colors.surface + 'E8', 
-          borderColor: colors.border,
-          shadowColor: colors.primary,
-        }
-      ]}>
+      {/* BOTTOM NAV */}
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            backgroundColor:
+              colors.surface +
+              'E8',
+            borderColor:
+              colors.border,
+          },
+        ]}
+      >
         {[
-            { id: 'print', label: 'PDF Print Queue', icon: Printer },
-            { id: 'packs', label: 'Exam Course Packs', icon: Flame },
-            { id: 'slots', label: 'Collection Slots', icon: Clock },
-          ].map(tab => {
-          const isActive = activeTab === tab.id;
+          {
+            id: 'print',
+            label: 'Print',
+            icon: Printer,
+          },
+          {
+            id: 'packs',
+            label: 'Packs',
+            icon: Flame,
+          },
+          {
+            id: 'slots',
+            label: 'Slots',
+            icon: Clock,
+          },
+        ].map((tab) => {
           const Icon = tab.icon;
+
+          const active =
+            activeTab === tab.id;
+
           return (
             <TouchableOpacity
               key={tab.id}
-              style={[styles.bottomTabBtn, isActive && { backgroundColor: colors.primary + '18' }]}
-              onPress={() => setActiveTab(tab.id as any)}
+              style={[
+                styles.bottomBtn,
+                active && {
+                  backgroundColor:
+                    colors.primary +
+                    '20',
+                },
+              ]}
+              onPress={() =>
+                setActiveTab(
+                  tab.id as ActiveTab
+                )
+              }
             >
-              <View style={[styles.bottomTabIndicator, isActive && { backgroundColor: colors.primary }]} />
-              <Icon size={20} color={isActive ? colors.primary : colors.textMuted} />
-              <Text style={[styles.bottomTabLabel, { color: isActive ? colors.primary : colors.textMuted }]}>
-                {tab.label.trim()}
+              <Icon
+                size={20}
+                color={
+                  active
+                    ? colors.primary
+                    : colors.textMuted
+                }
+              />
+
+              <Text
+                style={{
+                  color: active
+                    ? colors.primary
+                    : colors.textMuted,
+                  fontSize: 10,
+                  fontWeight: '900',
+                }}
+              >
+                {tab.label}
               </Text>
             </TouchableOpacity>
           );
@@ -609,297 +1568,272 @@ function StationeryManagerScreenMerchant() {
       </View>
     </View>
   );
-
 }
 
-
-const styles: any = StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 8,
   },
-  tabBarContainer: {
-    height: 48,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-  },
-  tabsScroll: {
-    paddingHorizontal: Spacing.md,
-    alignItems: 'center',
-    gap: 8,
-  },
-  tabBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  tabIcon: {
-    marginRight: 4,
-  },
-  tabLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
+
   scrollContent: {
     padding: Spacing.md,
   },
-  introHeader: {
-    marginBottom: 16,
+
+  analyticsCard: {
+    padding: 20,
+    borderRadius: 24,
+    marginBottom: 20,
   },
-  introTitle: {
-    fontSize: 18,
-    fontWeight: '800',
+
+  analyticsLabel: {
+    color:
+      'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    fontWeight: '900',
   },
-  introSub: {
-    fontSize: 12,
-    marginTop: 4,
-    lineHeight: 16,
+
+  analyticsValue: {
+    color: '#FFF',
+    fontSize: 34,
+    fontWeight: '900',
+    marginTop: 6,
   },
-  searchRow: {
-    flexDirection: 'row',
-    marginBottom: 12,
-    gap: 8,
+
+  analyticsDivider: {
+    height: 1,
+    backgroundColor:
+      'rgba(255,255,255,0.15)',
+    marginVertical: 14,
   },
-  searchBar: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 13,
-  },
-  addBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 16,
-  },
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  filterChipTxt: {
+
+  analyticsSub: {
+    color:
+      'rgba(255,255,255,0.7)',
     fontSize: 11,
   },
-  modalFormCard: {
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: 16,
+
+  analyticsRevenue: {
+    color: '#FFF',
+    fontSize: 22,
+    fontWeight: '900',
+    marginTop: 4,
   },
-  formHeaderRow: {
+
+  searchRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 10,
     marginBottom: 14,
   },
-  formTitle: {
-    fontSize: 14,
-    fontWeight: '800',
+
+  searchBar: {
     flex: 1,
+    height: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+  },
+
+  addBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+
+  filterChip: {
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+  },
+
+  modalCard: {
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 16,
+  },
+
+  formHeader: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  formTitle: {
+    fontSize: 15,
+    fontWeight: '900',
     marginLeft: 6,
   },
-  formInput: {
-    height: 40,
+
+  input: {
+    height: 44,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    fontSize: 13,
-    marginBottom: 10,
-    backgroundColor: 'rgba(255,255,255,0.01)',
-  },
-  inlineInputsGrid: {
-    flexDirection: 'row',
-    marginBottom: 10,
-  },
-  inputLabel: {
-    fontSize: 10,
-    marginBottom: 2,
-    fontWeight: '700',
-  },
-  selectBoxArea: {
-    flexDirection: 'row',
-    gap: 4,
-    height: 40,
-  },
-  smallSelectChip: {
-    flex: 1,
-    height: 36,
-    borderWidth: 1,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  submitBtn: {
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  printCard: {
-    padding: 14,
+    borderRadius: 14,
+    paddingHorizontal: 14,
     marginBottom: 12,
-    borderRadius: 16,
   },
-  studentNameText: {
-    fontSize: 14,
-    fontWeight: '800',
+
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    marginBottom: 8,
   },
-  statusBadge: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  pdfDetailsPanel: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  pdfNameLabel: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  invoiceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 10,
-  },
-  qtyDisplayTxt: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  printActionArea: {
+
+  selectionRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 12,
+    marginBottom: 14,
   },
-  shareSlipBtn: {
-    flexDirection: 'row',
-    paddingHorizontal: 12,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  transitionButton: {
+
+  selectChip: {
     flex: 1,
-    height: 32,
-    borderRadius: 8,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
+
+  submitBtn: {
+    height: 46,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  submitText: {
+    color: '#FFF',
+    fontWeight: '900',
+  },
+
+  printCard: {
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 12,
+  },
+
   packCard: {
-    padding: 14,
+    padding: 16,
+    borderRadius: 20,
     marginBottom: 12,
-    borderRadius: 16,
   },
-  packDetails: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 6,
+
+  slotCard: {
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 12,
+  },
+
+  cardHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  restockControlsArea: {
+
+  studentName: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+  },
+
+  detailsBox: {
     marginTop: 12,
-  },
-  restockButtonsGroup: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  restockButton: {
-    width: 38,
-    height: 26,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scheduleCard: {
-    padding: 14,
-    marginBottom: 12,
-    borderRadius: 16,
-  },
-  scheduleFooter: {
+    paddingTop: 12,
     borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 6,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
-  scheduleBtn: {
-    paddingHorizontal: 12,
-    height: 28,
-    borderRadius: 6,
+
+  fileName: {
+    fontWeight: '800',
+    fontSize: 13,
+  },
+
+  invoiceRow: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+  },
+
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+
+  actionBtn: {
+    flex: 1,
+    height: 38,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 5,
+  },
+
+  actionText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  restockRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+
+  restockBtn: {
+    width: 46,
+    height: 32,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  bottomTabBar: {
+
+  bottomBar: {
     position: 'absolute',
-    bottom: 20,
     left: 16,
     right: 16,
-    height: 72,
-    borderRadius: 22,
+    bottom: 20,
+    height: 74,
+    borderRadius: 24,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 6,
-    elevation: 12,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
+    paddingHorizontal: 8,
   },
-  bottomTabBtn: {
+
+  bottomBtn: {
     flex: 1,
-    height: 56,
-    borderRadius: 16,
+    height: 58,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 3,
-  },
-  bottomTabIndicator: {
-    width: 16,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: 'transparent',
-    marginBottom: 2,
-  },
-  bottomTabLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: 0.2,
+    gap: 4,
   },
 });

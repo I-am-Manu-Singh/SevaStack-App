@@ -24,12 +24,14 @@ export const TrendingServiceWidget = ({ item = MOCK_TRENDING }: { item?: any }) 
   return (
     <GlassCard style={styles.trendCard}>
       <View style={styles.trendHeader}>
+        
          <View style={[styles.trendBadge, { backgroundColor: colors.secondary || colors.accent }]}>
             <Zap size={10} color="#FFF" />
             <Text style={styles.trendBadgeTxt}>{t('trending').toUpperCase()}</Text>
          </View>
-         <Text style={[styles.trendCount, { color: colors.textMuted }]}>40+ {t('booked_today_suffix')}</Text>
+         
       </View>
+      
       <View style={styles.trendMain}>
          <Image source={{ uri: item.image }} style={styles.trendImg} />
          <View style={styles.trendInfo}>
@@ -51,6 +53,7 @@ export const TrendingServiceWidget = ({ item = MOCK_TRENDING }: { item?: any }) 
          <Text style={styles.bookTxt}>{t('book_now')}</Text>
          <ArrowRight size={14} color="#FFF" />
       </TouchableOpacity>
+      <Text style={[styles.trendCount, { color: colors.textMuted }]}>40+ {t('booked_today_suffix')}</Text>
     </GlassCard>
   );
 };
@@ -91,141 +94,258 @@ export const ShopSpotlightWidget = ({ shop = MOCK_SPOTLIGHT }: { shop?: any }) =
     </TouchableOpacity>
   );
 };
+const getStyles = (colors: any) =>
+  StyleSheet.create({
+    // ================= TRENDING CARD =================
 
-const getStyles = (colors: any) => StyleSheet.create({
-  trendCard: {
-    padding: 16,
-    width: 260,
-    marginRight: 16,
-    borderRadius: 20,
-    borderColor: colors.border,
-  },
-  trendHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  trendBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  trendBadgeTxt: {
-    color: '#FFF',
-    fontSize: 8,
-    fontWeight: '900',
-  },
-  trendCount: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  trendMain: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  trendImg: {
-    width: 60,
-    height: 60,
-    borderRadius: 12,
-  },
-  trendInfo: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  trendName: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  locRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  locTxt: {
-    fontSize: 10,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 6,
-  },
-  priceTag: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  ratingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  ratingTxt: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  bookBtn: {
-    marginTop: 16,
-    height: 38,
-    borderRadius: 10,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  bookTxt: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  spotlightCard: {
-    width: 160,
-    padding: 0,
-    overflow: 'hidden',
-    marginRight: 16,
-    marginBottom: 10,
-    borderRadius: 20,
-    borderColor: colors.border,
-  },
-  spotlightImg: {
-    width: '100%',
-    height: 100,
-  },
-  spotlightInfo: {
-    padding: 10,
-  },
-  spotlightName: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  spotlightMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  metaTxt: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  metaDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-  },
-  spotlightType: {
-    fontSize: 10,
-    fontWeight: '800',
-    marginTop: 4,
-    textTransform: 'uppercase',
-  }
-});
+    trendCard: {
+      width: 220,
+
+      padding: 12,
+
+      marginRight: 12,
+
+      borderRadius: 22,
+
+      borderWidth: 1,
+
+      borderColor: colors.border,
+
+      overflow: 'hidden',
+    },
+
+    trendHeader: {
+      flexDirection: 'row',
+
+      justifyContent: 'space-between',
+      alignItems: 'center',
+
+      marginBottom: 10,
+    },
+
+    trendBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+
+      gap: 4,
+
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+
+      borderRadius: 999,
+    },
+
+    trendBadgeTxt: {
+      color: '#FFF',
+
+      fontSize: 8,
+
+      fontWeight: '900',
+
+      letterSpacing: 0.4,
+    },
+
+    trendCount: {
+      fontSize: 9,
+      paddingTop: 12,
+      textAlign: 'center',
+      fontWeight: '900',
+    },
+
+    trendMain: {
+      flexDirection: 'row',
+
+      alignItems: 'center',
+    },
+
+    trendImg: {
+      width: 68,
+      height: 68,
+
+      borderRadius: 16,
+    },
+
+    trendInfo: {
+      flex: 1,
+
+      marginLeft: 10,
+
+      justifyContent: 'center',
+    },
+
+    trendName: {
+      fontSize: 13,
+
+      fontWeight: '800',
+
+      lineHeight: 18,
+    },
+
+    locRow: {
+      flexDirection: 'row',
+
+      alignItems: 'center',
+
+      gap: 4,
+
+      marginTop: 4,
+    },
+
+    locTxt: {
+      flex: 1,
+
+      fontSize: 10,
+
+      fontWeight: '600',
+    },
+
+    priceRow: {
+      flexDirection: 'row',
+
+      justifyContent: 'space-between',
+      alignItems: 'center',
+
+      marginTop: 8,
+    },
+
+    priceTag: {
+      fontSize: 16,
+
+      fontWeight: '900',
+    },
+
+    ratingBadge: {
+      flexDirection: 'row',
+
+      alignItems: 'center',
+
+      gap: 3,
+
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+
+      borderRadius: 999,
+
+      backgroundColor: `${colors.primary}10`,
+    },
+
+    ratingTxt: {
+      fontSize: 10,
+
+      fontWeight: '800',
+    },
+
+    bookBtn: {
+      marginTop: 12,
+
+      height: 36,
+
+      borderRadius: 14,
+
+      flexDirection: 'row',
+
+      justifyContent: 'center',
+      alignItems: 'center',
+
+      gap: 6,
+    },
+
+    bookTxt: {
+      color: '#FFF',
+
+      fontSize: 11,
+
+      fontWeight: '800',
+    },
+
+    // ================= SPOTLIGHT CARD =================
+
+    spotlightCard: {
+      width: 170,
+
+      marginRight: 12,
+      marginBottom: 8,
+
+      padding: 0,
+
+      overflow: 'hidden',
+
+      borderRadius: 22,
+
+      borderWidth: 1,
+
+      borderColor: colors.border,
+    },
+
+    spotlightImg: {
+      width: '100%',
+
+      height: 110,
+
+      resizeMode: 'cover',
+    },
+
+    spotlightInfo: {
+      padding: 12,
+    },
+
+    spotlightName: {
+      fontSize: 13,
+
+      fontWeight: '800',
+
+      lineHeight: 18,
+    },
+
+    spotlightMeta: {
+      flexDirection: 'row',
+
+      alignItems: 'center',
+
+      marginTop: 6,
+    },
+
+    metaItem: {
+      flexDirection: 'row',
+
+      alignItems: 'center',
+
+      gap: 4,
+    },
+
+    metaTxt: {
+      fontSize: 10,
+
+      fontWeight: '700',
+    },
+
+    metaDot: {
+      width: 4,
+      height: 4,
+
+      borderRadius: 999,
+
+      marginHorizontal: 6,
+    },
+
+    spotlightType: {
+      marginTop: 8,
+
+      alignSelf: 'flex-start',
+
+      fontSize: 9,
+
+      fontWeight: '900',
+
+      textTransform: 'uppercase',
+
+      letterSpacing: 0.6,
+
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+
+      borderRadius: 999,
+
+      backgroundColor: `${colors.primary}12`,
+    },
+  });

@@ -1,110 +1,180 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  ScrollView, 
-  TouchableOpacity, 
-  TextInput, 
-  Image, 
-  Alert, 
-  Share,
+// LaundryManagerScreen.tsx
+// Cleaner architecture, analytics, better UX, reusable flow.
+// Because apparently humans now need enterprise dashboards for socks.
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
+import {
+  ActivityIndicator,
+  Alert,
   RefreshControl,
-  ActivityIndicator
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
-import { 
-  Waves,
-  Timer,
-  Shirt,
-  Calendar,
+
+import {
   AlertTriangle,
+  Calendar,
+  CheckCircle2,
+  Clock3,
+  Droplets,
+  Flame,
   Plus,
+  QrCode,
   Search,
   Share2,
-  CheckCircle2,
+  Shirt,
   Sparkles,
-  ChevronRight,
-  UserPlus,
-  Printer,
-  QrCode,
-  Flame,
-  ArrowUpRight
+  TimerReset,
+  Waves,
 } from 'lucide-react-native';
-import { Colors, Spacing, Typography } from '@/constants/Theme';
+
+import { Spacing } from '@/constants/Theme';
 import { GlassCard } from '@/components/GlassCard';
+import { CustomerBusinessView } from '@/components/CustomerBusinessView';
 import { useApp } from '@/lib/AppContext';
 import { supabase } from '@/lib/supabase';
-import { CustomerBusinessView } from '@/components/CustomerBusinessView';
+
+type TabType =
+  | 'orders'
+  | 'delicate'
+  | 'schedule';
+
+const STATUS_FLOW = [
+  'Received',
+  'In-Wash',
+  'Ironing',
+  'Ready for Pick',
+  'Completed',
+];
 
 export default function LaundryManagerScreen() {
-  const { userRole, businessType } = useApp();
-  
-  if (userRole === 'customer' || businessType !== 'Laundry') {
-    return <CustomerBusinessView type="Laundry" />;
+  const { userRole, businessType } =
+    useApp();
+
+  if (
+    userRole === 'customer' ||
+    businessType !== 'Laundry'
+  ) {
+    return (
+      <CustomerBusinessView type="Laundry" />
+    );
   }
 
-  return <LaundryManagerScreenMerchant />;
+  return <LaundryMerchantScreen />;
 }
 
-function LaundryManagerScreenMerchant() {
+function LaundryMerchantScreen() {
+  const { colors, profile } =
+    useApp();
 
-  const { colors, theme, profile, userRole, businessType } = useApp();
-  
-  
+  const [activeTab, setActiveTab] =
+    useState<TabType>('orders');
 
-  const [activeTab, setActiveTab] = useState<'orders' | 'delicate' | 'schedule'>('orders');
+  const [loading, setLoading] =
+    useState(true);
 
-  // Dynamic Supabase State
-  const [orders, setOrders] = useState<any[]>([]);
-  const [delicateWarnings, setDelicateWarnings] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [orders, setOrders] = useState<
+    any[]
+  >([]);
+
+  const [searchQuery, setSearchQuery] =
+    useState('');
+
+  const [statusFilter, setStatusFilter] =
+    useState<
+      | 'All'
+      | 'Received'
+      | 'In-Wash'
+      | 'Ironing'
+      | 'Ready for Pick'
+    >('All');
+
+  // MODAL
+  const [showNewOrder, setShowNewOrder] =
+    useState(false);
+
+  // FORM
+  const [customerName, setCustomerName] =
+    useState('');
+
+  const [room, setRoom] =
+    useState('');
+
+  const [items, setItems] =
+    useState('6');
+
+  const [serviceType, setServiceType] =
+    useState('Wash & Iron');
+
+  const [instructions, setInstructions] =
+    useState('');
 
   const fetchData = useCallback(async () => {
     if (!profile?.id) return;
+
     try {
-      const { data, error } = await supabase
-        .from('laundry_orders')
-        .select('*')
-        .eq('merchant_id', profile.id)
-        .order('created_at', { ascending: false });
+      const { data, error } =
+        await supabase
+          .from('laundry_orders')
+          .select('*')
+          .eq(
+            'merchant_id',
+            profile.id
+          )
+          .order('created_at', {
+            ascending: false,
+          });
 
       if (error) throw error;
 
-      if (data) {
-        const mapped = data.map((row: any) => ({
-          id: row.id,
-          customerName: row.customer_name,
-          room: row.room,
-          items: row.items,
-          serviceType: row.service_type,
-          amount: parseFloat(row.amount),
-          status: row.status,
-          delicateTag: row.delicate_tag,
-          date: row.created_at ? new Date(row.created_at).toLocaleDateString() : 'Just Now'
-        }));
-        setOrders(mapped);
-
-        // Extract delicate warnings dynamically
-        const warnings = mapped
-          .filter((ord: any) => ord.delicateTag)
-          .map((ord: any) => ({
-            id: ord.id,
-            itemName: `${ord.serviceType} clothes bag`,
-            owner: `${ord.customerName} (${ord.room})`,
-            dangerTag: 'Special Care Required',
-            warning: ord.delicateTag,
-            verified: ord.status !== 'Received'
-          }));
-        setDelicateWarnings(warnings);
-      }
+      setOrders(
+        (data || []).map(
+          (row: any) => ({
+            id: row.id,
+            customerName:
+              row.customer_name,
+            room: row.room,
+            items: row.items,
+            serviceType:
+              row.service_type,
+            amount:
+              parseFloat(
+                row.amount
+              ) || 0,
+            status: row.status,
+            delicateTag:
+              row.delicate_tag,
+            date:
+              row.created_at
+                ? new Date(
+                    row.created_at
+                  ).toLocaleDateString()
+                : 'Today',
+          })
+        )
+      );
     } catch (e) {
-      console.error(e);
+      console.log(e);
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   }, [profile?.id]);
 
@@ -113,447 +183,1539 @@ function LaundryManagerScreenMerchant() {
   }, [fetchData]);
 
   const onRefresh = () => {
-    setIsRefreshing(true);
+    setRefreshing(true);
     fetchData();
   };
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeStatusFilter, setActiveStatusFilter] = useState<'All' | 'Received' | 'In-Wash' | 'Ironing' | 'Ready for Pick'>('All');
+  // ANALYTICS
+  const activeOrders =
+    orders.filter(
+      (o) =>
+        o.status !== 'Completed'
+    ).length;
 
-  // Add Order Modal Form states
-  const [newOrderModal, setNewOrderModal] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newRoom, setNewRoom] = useState('');
-  const [newItemsCount, setNewItemsCount] = useState('6');
-  const [newService, setNewService] = useState('Wash & Iron');
-  const [newDelicateTag, setNewDelicateTag] = useState('');
-  
-  // Transition order processing timeline
-  const transitionOrderStatus = async (id: string, currentStatus: string) => {
-    const statusSequence = ['Received', 'In-Wash', 'Ironing', 'Ready for Pick', 'Completed'];
-    const nextIdx = statusSequence.indexOf(currentStatus) + 1;
-    if (nextIdx >= statusSequence.length) return;
+  const delicateOrders =
+    orders.filter(
+      (o) => o.delicateTag
+    ).length;
 
-    const nextStatus = statusSequence[nextIdx];
+  const readyOrders =
+    orders.filter(
+      (o) =>
+        o.status ===
+        'Ready for Pick'
+    ).length;
 
-    try {
-      const { error } = await supabase
-        .from('laundry_orders')
-        .update({ status: nextStatus })
-        .eq('id', id);
+  const totalRevenue =
+    orders.reduce(
+      (sum, o) => sum + o.amount,
+      0
+    );
 
-      if (error) throw error;
+  // FILTER
+  const filteredOrders = useMemo(() => {
+    return orders.filter((ord) => {
+      const matchesSearch =
+        ord.customerName
+          .toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          ) ||
+        ord.room
+          .toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          ) ||
+        ord.serviceType
+          .toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          );
 
-      if (nextStatus === 'Completed') {
-        Alert.alert('Order Settled', 'Laundry bag has been picked up by customer and payment cleared!');
-      }
-      fetchData();
-    } catch (e: any) {
-      Alert.alert("Failed to update status", e.message);
-    }
-  };
+      const matchesStatus =
+        statusFilter === 'All' ||
+        ord.status === statusFilter;
 
-  // Add fresh laundry order
-  const handleAddNewOrder = async () => {
-    if (!newName || !newRoom) {
-      Alert.alert('Missing Fields', 'Please complete customer details.');
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        ord.status !== 'Completed'
+      );
+    });
+  }, [
+    orders,
+    searchQuery,
+    statusFilter,
+  ]);
+
+  const delicateWarnings =
+    useMemo(() => {
+      return orders.filter(
+        (o) => o.delicateTag
+      );
+    }, [orders]);
+
+  // ADD ORDER
+  const addOrder = async () => {
+    if (!customerName || !room) {
+      Alert.alert(
+        'Missing Details',
+        'Please fill customer info.'
+      );
+
       return;
     }
-    if (!profile?.id) return;
-
-    const items = parseInt(newItemsCount) || 5;
-    let rate = 20; // Default rate per item
-    if (newService.includes('Dry Clean')) rate = 70;
-    else if (newService.includes('Iron')) rate = 30;
 
     try {
-      const { error } = await supabase
-        .from('laundry_orders')
-        .insert([{
-          merchant_id: profile.id,
-          customer_name: newName,
-          room: newRoom,
-          items: items,
-          service_type: newService,
-          amount: items * rate,
-          status: 'Received',
-          delicate_tag: newDelicateTag || null
-        }]);
+      let rate = 20;
+
+      if (
+        serviceType.includes(
+          'Dry'
+        )
+      ) {
+        rate = 70;
+      }
+
+      if (
+        serviceType.includes(
+          'Iron'
+        )
+      ) {
+        rate = 30;
+      }
+
+      const qty =
+        parseInt(items) || 5;
+
+      const { error } =
+        await supabase
+          .from(
+            'laundry_orders'
+          )
+          .insert([
+            {
+              merchant_id:
+                profile?.id,
+              customer_name:
+                customerName,
+              room,
+              items: qty,
+              service_type:
+                serviceType,
+              amount: qty * rate,
+              status:
+                'Received',
+              delicate_tag:
+                instructions ||
+                null,
+            },
+          ]);
 
       if (error) throw error;
 
-      Alert.alert('Order Booked', `Registered laundry bag with ${items} items under ${newService}.`);
-      setNewName('');
-      setNewRoom('');
-      setNewItemsCount('6');
-      setNewDelicateTag('');
-      setNewOrderModal(false);
+      Alert.alert(
+        'Laundry Added',
+        'Order created successfully.'
+      );
+
+      setCustomerName('');
+      setRoom('');
+      setItems('6');
+      setInstructions('');
+      setShowNewOrder(false);
+
       fetchData();
     } catch (e: any) {
-      Alert.alert("Failed to book order", e.message);
+      Alert.alert(
+        'Error',
+        e.message
+      );
     }
   };
 
-  // Verify garment damage warning tag
-  const verifyWarning = async (id: string) => {
+  // STATUS FLOW
+  const updateStatus = async (
+    id: string,
+    currentStatus: string
+  ) => {
+    const currentIndex =
+      STATUS_FLOW.indexOf(
+        currentStatus
+      );
+
+    if (
+      currentIndex === -1 ||
+      currentIndex ===
+        STATUS_FLOW.length - 1
+    ) {
+      return;
+    }
+
+    const nextStatus =
+      STATUS_FLOW[
+        currentIndex + 1
+      ];
+
     try {
-      const { error } = await supabase
-        .from('laundry_orders')
-        .update({ status: 'In-Wash' })
-        .eq('id', id);
+      const { error } =
+        await supabase
+          .from(
+            'laundry_orders'
+          )
+          .update({
+            status: nextStatus,
+          })
+          .eq('id', id);
 
       if (error) throw error;
 
-      Alert.alert('Garment Safe-checked', 'Delicate laundry item marked as checked and moved to In-Wash.');
       fetchData();
+
+      if (
+        nextStatus ===
+        'Completed'
+      ) {
+        Alert.alert(
+          'Completed',
+          'Laundry order closed.'
+        );
+      }
     } catch (e: any) {
-      Alert.alert("Failed to check item", e.message);
+      Alert.alert(
+        'Error',
+        e.message
+      );
     }
   };
 
-  // Filtered lists
-  const filteredOrders = orders.filter(ord => {
-    const matchesSearch = ord.customerName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          ord.room.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          ord.serviceType.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = activeStatusFilter === 'All' || ord.status === activeStatusFilter;
-    return matchesSearch && matchesStatus && ord.status !== 'Completed';
-  });
+  const verifyDelicate =
+    async (id: string) => {
+      try {
+        const { error } =
+          await supabase
+            .from(
+              'laundry_orders'
+            )
+            .update({
+              status:
+                'In-Wash',
+            })
+            .eq('id', id);
+
+        if (error)
+          throw error;
+
+        Alert.alert(
+          'Verified',
+          'Garment marked safe.'
+        );
+
+        fetchData();
+      } catch (e: any) {
+        Alert.alert(
+          'Error',
+          e.message
+        );
+      }
+    };
+
+  const getNextActionLabel = (
+    status: string
+  ) => {
+    switch (status) {
+      case 'Received':
+        return 'Start Washing';
+
+      case 'In-Wash':
+        return 'Move to Iron';
+
+      case 'Ironing':
+        return 'Ready for Pickup';
+
+      case 'Ready for Pick':
+        return 'Complete Order';
+
+      default:
+        return 'Processed';
+    }
+  };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor:
+            colors.background,
+        },
+      ]}
+    >
       <StatusBar style="light" />
-      <Stack.Screen options={{ 
-        title: 'Laundry & Dry Cleaning Hub',
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.primary,
-        headerShown: true
-      }} />
 
-      <ScrollView 
-         showsVerticalScrollIndicator={false} 
-         contentContainerStyle={styles.scrollContent}
-         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      <Stack.Screen
+        options={{
+          title:
+            'Laundry Hub',
+          headerStyle: {
+            backgroundColor:
+              colors.background,
+          },
+          headerTintColor:
+            colors.primary,
+        }}
+      />
+
+      <ScrollView
+        contentContainerStyle={
+          styles.scrollContent
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              refreshing
+            }
+            onRefresh={
+              onRefresh
+            }
+            tintColor={
+              colors.primary
+            }
+          />
+        }
       >
-        
-        {activeTab === 'orders' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Active Laundry Processing Bags</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Monitor wash cycles and iron dispatches. Transition bags along the timeline: Received  In-Wash  Ironing  Ready for Pick.
+        {/* HUD */}
+        <GlassCard
+          style={[
+            styles.hudCard,
+            {
+              backgroundColor:
+                colors.primary,
+            },
+          ]}
+        >
+          <View
+            style={
+              styles.hudHeader
+            }
+          >
+            <View>
+              <Text
+                style={
+                  styles.hudMini
+                }
+              >
+                TOTAL REVENUE
+              </Text>
+
+              <Text
+                style={
+                  styles.hudValue
+                }
+              >
+                ₹
+                {
+                  totalRevenue
+                }
               </Text>
             </View>
 
-            {/* Quick Search and Add Order */}
-            <View style={styles.searchRow}>
-              <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Search size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
-                <TextInput
-                  placeholder="Search students, PG, room, service..."
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.searchInput, { color: colors.text }]}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                />
-              </View>
-              <TouchableOpacity 
-                style={[styles.addBtn, { backgroundColor: colors.primary }]}
-                onPress={() => setNewOrderModal(!newOrderModal)}
+            <Waves
+              size={34}
+              color="#FFF"
+            />
+          </View>
+
+          <View
+            style={
+              styles.hudDivider
+            }
+          />
+
+          <View
+            style={
+              styles.hudStatsRow
+            }
+          >
+            <View>
+              <Text
+                style={
+                  styles.hudStatValue
+                }
               >
-                <Plus size={20} color="#FFF" />
+                {
+                  activeOrders
+                }
+              </Text>
+
+              <Text
+                style={
+                  styles.hudStatLabel
+                }
+              >
+                Active
+              </Text>
+            </View>
+
+            <View>
+              <Text
+                style={
+                  styles.hudStatValue
+                }
+              >
+                {
+                  delicateOrders
+                }
+              </Text>
+
+              <Text
+                style={
+                  styles.hudStatLabel
+                }
+              >
+                Delicate
+              </Text>
+            </View>
+
+            <View>
+              <Text
+                style={
+                  styles.hudStatValue
+                }
+              >
+                {
+                  readyOrders
+                }
+              </Text>
+
+              <Text
+                style={
+                  styles.hudStatLabel
+                }
+              >
+                Ready
+              </Text>
+            </View>
+          </View>
+        </GlassCard>
+
+        {/* ORDERS */}
+        {activeTab === 'orders' && (
+          <>
+            <View
+              style={
+                styles.titleRow
+              }
+            >
+              <View>
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    {
+                      color:
+                        colors.text,
+                    },
+                  ]}
+                >
+                  Laundry Orders
+                </Text>
+
+                <Text
+                  style={[
+                    styles.sectionSub,
+                    {
+                      color:
+                        colors.textMuted,
+                    },
+                  ]}
+                >
+                  Track wash,
+                  ironing &
+                  pickup flow
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.addBtn,
+                  {
+                    backgroundColor:
+                      colors.primary,
+                  },
+                ]}
+                onPress={() =>
+                  setShowNewOrder(
+                    !showNewOrder
+                  )
+                }
+              >
+                <Plus
+                  size={20}
+                  color="#FFF"
+                />
               </TouchableOpacity>
             </View>
 
-            {/* Status Filter Row */}
-            <View style={styles.filterRow}>
-              {['All', 'Received', 'In-Wash', 'Ironing', 'Ready for Pick'].map(f => (
-                <TouchableOpacity
-                  key={f}
-                  style={[
-                    styles.filterChip,
-                    { backgroundColor: colors.surface, borderColor: colors.border },
-                    activeStatusFilter === f && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
-                  ]}
-                  onPress={() => setActiveStatusFilter(f as any)}
-                >
-                  <Text style={[
-                    styles.filterChipTxt,
-                    { color: colors.textMuted },
-                    activeStatusFilter === f && { color: colors.primary, fontWeight: '700' }
-                  ]}>
-                    {f}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            {/* SEARCH */}
+            <View
+              style={[
+                styles.searchBar,
+                {
+                  backgroundColor:
+                    colors.surface,
+                  borderColor:
+                    colors.border,
+                },
+              ]}
+            >
+              <Search
+                size={18}
+                color={
+                  colors.textMuted
+                }
+              />
+
+              <TextInput
+                value={
+                  searchQuery
+                }
+                onChangeText={
+                  setSearchQuery
+                }
+                placeholder="Search customer, room..."
+                placeholderTextColor={
+                  colors.textMuted
+                }
+                style={[
+                  styles.searchInput,
+                  {
+                    color:
+                      colors.text,
+                  },
+                ]}
+              />
             </View>
 
-            {/* Add Order form workspace card */}
-            {newOrderModal && (
-              <GlassCard style={styles.modalFormCard}>
-                <View style={styles.formHeaderRow}>
-                  <Sparkles size={16} color={colors.primary} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>Book Laundry Bag</Text>
-                  <TouchableOpacity onPress={() => setNewOrderModal(false)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Close</Text>
-                  </TouchableOpacity>
+            {/* FILTER */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={
+                false
+              }
+              style={{
+                marginBottom: 16,
+              }}
+            >
+              <View
+                style={
+                  styles.filterRow
+                }
+              >
+                {[
+                  'All',
+                  'Received',
+                  'In-Wash',
+                  'Ironing',
+                  'Ready for Pick',
+                ].map((item) => {
+                  const active =
+                    statusFilter ===
+                    item;
+
+                  return (
+                    <TouchableOpacity
+                      key={item}
+                      style={[
+                        styles.filterChip,
+                        {
+                          backgroundColor:
+                            active
+                              ? colors.primary +
+                                '20'
+                              : colors.surface,
+                          borderColor:
+                            active
+                              ? colors.primary
+                              : colors.border,
+                        },
+                      ]}
+                      onPress={() =>
+                        setStatusFilter(
+                          item as any
+                        )
+                      }
+                    >
+                      <Text
+                        style={{
+                          color:
+                            active
+                              ? colors.primary
+                              : colors.textMuted,
+                          fontWeight:
+                            '800',
+                          fontSize: 11,
+                        }}
+                      >
+                        {item}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            {/* ADD ORDER */}
+            {showNewOrder && (
+              <GlassCard
+                style={
+                  styles.formCard
+                }
+              >
+                <View
+                  style={
+                    styles.formHeader
+                  }
+                >
+                  <Sparkles
+                    size={18}
+                    color={
+                      colors.primary
+                    }
+                  />
+
+                  <Text
+                    style={[
+                      styles.formTitle,
+                      {
+                        color:
+                          colors.text,
+                      },
+                    ]}
+                  >
+                    Create Laundry
+                    Order
+                  </Text>
                 </View>
 
                 <TextInput
-                  placeholder="Student Name / Professor Name"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newName}
-                  onChangeText={setNewName}
+                  placeholder="Customer Name"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  value={
+                    customerName
+                  }
+                  onChangeText={
+                    setCustomerName
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      borderColor:
+                        colors.border,
+                      color:
+                        colors.text,
+                      backgroundColor:
+                        colors.surface,
+                    },
+                  ]}
                 />
 
                 <TextInput
-                  placeholder="PG Hostel Room (e.g. PG Block 3 Rm 202)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newRoom}
-                  onChangeText={setNewRoom}
+                  placeholder="Room / Hostel"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  value={room}
+                  onChangeText={
+                    setRoom
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      borderColor:
+                        colors.border,
+                      color:
+                        colors.text,
+                      backgroundColor:
+                        colors.surface,
+                    },
+                  ]}
                 />
 
-                <View style={styles.inlineInputsGrid}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Clothes Count</Text>
+                <View
+                  style={
+                    styles.inlineGrid
+                  }
+                >
+                  <View
+                    style={{
+                      flex: 1,
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.inputLabel,
+                        {
+                          color:
+                            colors.textMuted,
+                        },
+                      ]}
+                    >
+                      Clothes
+                    </Text>
+
                     <TextInput
-                      style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                      value={newItemsCount}
-                      onChangeText={setNewItemsCount}
+                      value={items}
+                      onChangeText={
+                        setItems
+                      }
                       keyboardType="numeric"
+                      style={[
+                        styles.formInput,
+                        {
+                          borderColor:
+                            colors.border,
+                          color:
+                            colors.text,
+                          backgroundColor:
+                            colors.surface,
+                        },
+                      ]}
                     />
                   </View>
-                  
-                  <View style={{ flex: 2 }}>
-                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Wash Treatment</Text>
-                    <View style={styles.selectBoxArea}>
-                      {['Wash & Iron', 'Premium Dry Clean', 'Wash Only'].map(serv => (
-                        <TouchableOpacity
-                          key={serv}
-                          style={[
-                            styles.smallSelectChip,
-                            { backgroundColor: colors.surface, borderColor: colors.border },
-                            newService === serv && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
-                          ]}
-                          onPress={() => setNewService(serv)}
-                        >
-                          <Text style={{ fontSize: 9, color: newService === serv ? colors.primary : colors.textMuted }}>{serv}</Text>
-                        </TouchableOpacity>
-                      ))}
+
+                  <View
+                    style={{
+                      flex: 2,
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.inputLabel,
+                        {
+                          color:
+                            colors.textMuted,
+                        },
+                      ]}
+                    >
+                      Service
+                    </Text>
+
+                    <View
+                      style={
+                        styles.serviceRow
+                      }
+                    >
+                      {[
+                        'Wash & Iron',
+                        'Wash Only',
+                        'Premium Dry Clean',
+                      ].map(
+                        (
+                          service
+                        ) => {
+                          const active =
+                            serviceType ===
+                            service;
+
+                          return (
+                            <TouchableOpacity
+                              key={
+                                service
+                              }
+                              style={[
+                                styles.serviceChip,
+                                {
+                                  backgroundColor:
+                                    active
+                                      ? colors.primary +
+                                        '20'
+                                      : colors.surface,
+                                  borderColor:
+                                    active
+                                      ? colors.primary
+                                      : colors.border,
+                                },
+                              ]}
+                              onPress={() =>
+                                setServiceType(
+                                  service
+                                )
+                              }
+                            >
+                              <Text
+                                style={{
+                                  color:
+                                    active
+                                      ? colors.primary
+                                      : colors.textMuted,
+                                  fontSize: 9,
+                                  fontWeight:
+                                    '700',
+                                  textAlign:
+                                    'center',
+                                }}
+                              >
+                                {
+                                  service
+                                }
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        }
+                      )}
                     </View>
                   </View>
                 </View>
 
                 <TextInput
-                  placeholder="Garment instructions (e.g. woolens, avoid steam)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newDelicateTag}
-                  onChangeText={setNewDelicateTag}
+                  placeholder="Special instructions"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  value={
+                    instructions
+                  }
+                  onChangeText={
+                    setInstructions
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      borderColor:
+                        colors.border,
+                      color:
+                        colors.text,
+                      backgroundColor:
+                        colors.surface,
+                    },
+                  ]}
                 />
 
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-                  onPress={handleAddNewOrder}
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor:
+                        colors.primary,
+                    },
+                  ]}
+                  onPress={
+                    addOrder
+                  }
                 >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Confirm Wash Order</Text>
+                  <Text
+                    style={
+                      styles.submitText
+                    }
+                  >
+                    Create Order
+                  </Text>
                 </TouchableOpacity>
               </GlassCard>
             )}
 
-            {/* List */}
-            {filteredOrders.map(ord => (
-              <GlassCard key={ord.id} style={styles.orderCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentName, { color: colors.text }]}>{ord.customerName}</Text>
-                    <Text style={[styles.hostelText, { color: colors.textMuted }]}> {ord.room} • {ord.date}</Text>
-                  </View>
-                  
-                  <View style={[
-                    styles.statusBadge, 
-                    ord.status === 'Ready for Pick' ? { backgroundColor: colors.success + '20' } : { backgroundColor: colors.accent + '20' }
-                  ]}>
-                    <Timer size={11} color={ord.status === 'Ready for Pick' ? colors.success : colors.accent} style={{ marginRight: 4 }} />
-                    <Text style={{ fontSize: 9, color: ord.status === 'Ready for Pick' ? colors.success : colors.accent, fontWeight: '900' }}>
-                      {ord.status.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Processing particulars */}
-                <View style={[styles.particularsPanel, { borderTopColor: colors.border }]}>
-                  <View>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>WASH CATEGORY & SERVICE</Text>
-                    <Text style={[styles.boldLabel, { color: colors.text }]}>{ord.serviceType}</Text>
-                  </View>
-                  
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>QUANTITY</Text>
-                    <Text style={[styles.boldLabel, { color: colors.text }]}>{ord.items} Items</Text>
-                  </View>
-                </View>
-
-                {ord.delicateTag && (
-                  <View style={[styles.delicateBanner, { backgroundColor: colors.error + '10', borderColor: colors.error + '30' }]}>
-                    <AlertTriangle size={12} color={colors.error} style={{ marginRight: 6 }} />
-                    <Text style={{ fontSize: 10, color: colors.error, fontWeight: '700' }}>
-                      Delicate item warning: {ord.delicateTag}
-                    </Text>
-                  </View>
-                )}
-
-                {/* Settle total cost */}
-                <View style={[styles.invoiceRow, { borderTopColor: colors.border }]}>
-                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Est. Processing Dues:</Text>
-                  <Text style={[styles.qtyDisplayTxt, { color: colors.text }]}>₹{ord.amount}</Text>
-                </View>
-
-                {/* Actions timeline transition */}
-                <View style={styles.timelineTransitionArea}>
-                  <TouchableOpacity 
-                    style={[styles.shareSlipBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Share.share({ message: `Hi ${ord.customerName}, your SevaStack Laundry Order is ${ord.status}. Outstanding amount: ₹${ord.amount}.` })}
+            {/* LIST */}
+            {loading ? (
+              <ActivityIndicator
+                size="large"
+                color={
+                  colors.primary
+                }
+                style={{
+                  marginTop: 50,
+                }}
+              />
+            ) : (
+              filteredOrders.map(
+                (ord) => (
+                  <GlassCard
+                    key={ord.id}
+                    style={
+                      styles.orderCard
+                    }
                   >
-                    <Share2 size={13} color={colors.text} style={{ marginRight: 4 }} />
-                    <Text style={{ color: colors.text, fontSize: 11, fontWeight: '700' }}>Share Invoice</Text>
-                  </TouchableOpacity>
+                    <View
+                      style={
+                        styles.orderHeader
+                      }
+                    >
+                      <View
+                        style={{
+                          flex: 1,
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.customerName,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          {
+                            ord.customerName
+                          }
+                        </Text>
 
-                  <TouchableOpacity 
-                    style={[styles.transitionButton, { backgroundColor: colors.primary }]}
-                    onPress={() => transitionOrderStatus(ord.id, ord.status)}
-                  >
-                    <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>
-                      {ord.status === 'Received' && 'Start Washing '}
-                      {ord.status === 'In-Wash' && 'Move to Ironing '}
-                      {ord.status === 'Ironing' && 'Mark Ready for Pick '}
-                      {ord.status === 'Ready for Pick' && 'Settle Dues & Picked up '}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
+                        <Text
+                          style={{
+                            color:
+                              colors.textMuted,
+                            fontSize: 11,
+                          }}
+                        >
+                          {
+                            ord.room
+                          }{' '}
+                          •{' '}
+                          {
+                            ord.date
+                          }
+                        </Text>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          {
+                            backgroundColor:
+                              ord.status ===
+                              'Ready for Pick'
+                                ? colors.success +
+                                  '20'
+                                : colors.accent +
+                                  '20',
+                          },
+                        ]}
+                      >
+                        <Clock3
+                          size={
+                            11
+                          }
+                          color={
+                            ord.status ===
+                            'Ready for Pick'
+                              ? colors.success
+                              : colors.accent
+                          }
+                        />
+
+                        <Text
+                          style={{
+                            color:
+                              ord.status ===
+                              'Ready for Pick'
+                                ? colors.success
+                                : colors.accent,
+                            fontSize: 9,
+                            fontWeight:
+                              '900',
+                            marginLeft: 4,
+                          }}
+                        >
+                          {
+                            ord.status
+                          }
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.detailsRow,
+                        {
+                          borderTopColor:
+                            colors.border,
+                        },
+                      ]}
+                    >
+                      <View>
+                        <Text
+                          style={
+                            styles.infoLabel
+                          }
+                        >
+                          SERVICE
+                        </Text>
+
+                        <Text
+                          style={[
+                            styles.infoValue,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          {
+                            ord.serviceType
+                          }
+                        </Text>
+                      </View>
+
+                      <View
+                        style={{
+                          alignItems:
+                            'flex-end',
+                        }}
+                      >
+                        <Text
+                          style={
+                            styles.infoLabel
+                          }
+                        >
+                          ITEMS
+                        </Text>
+
+                        <Text
+                          style={[
+                            styles.infoValue,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          {
+                            ord.items
+                          }
+                        </Text>
+                      </View>
+                    </View>
+
+                    {ord.delicateTag && (
+                      <View
+                        style={[
+                          styles.warningBox,
+                          {
+                            backgroundColor:
+                              colors.error +
+                              '12',
+                            borderColor:
+                              colors.error +
+                              '30',
+                          },
+                        ]}
+                      >
+                        <AlertTriangle
+                          size={12}
+                          color={
+                            colors.error
+                          }
+                        />
+
+                        <Text
+                          style={{
+                            color:
+                              colors.error,
+                            marginLeft: 6,
+                            fontSize: 10,
+                            fontWeight:
+                              '700',
+                            flex: 1,
+                          }}
+                        >
+                          {
+                            ord.delicateTag
+                          }
+                        </Text>
+                      </View>
+                    )}
+
+                    <View
+                      style={[
+                        styles.priceRow,
+                        {
+                          borderTopColor:
+                            colors.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            colors.textMuted,
+                          fontSize: 11,
+                        }}
+                      >
+                        Total
+                        Charges
+                      </Text>
+
+                      <Text
+                        style={[
+                          styles.priceText,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        ₹
+                        {
+                          ord.amount
+                        }
+                      </Text>
+                    </View>
+
+                    <View
+                      style={
+                        styles.actionRow
+                      }
+                    >
+                      <TouchableOpacity
+                        style={[
+                          styles.shareBtn,
+                          {
+                            backgroundColor:
+                              colors.surface,
+                          },
+                        ]}
+                        onPress={() =>
+                          Share.share({
+                            message: `Laundry order for ${ord.customerName} is currently ${ord.status}`,
+                          })
+                        }
+                      >
+                        <Share2
+                          size={13}
+                          color={
+                            colors.text
+                          }
+                        />
+
+                        <Text
+                          style={{
+                            color:
+                              colors.text,
+                            marginLeft: 5,
+                            fontSize: 11,
+                            fontWeight:
+                              '700',
+                          }}
+                        >
+                          Share
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.processBtn,
+                          {
+                            backgroundColor:
+                              colors.primary,
+                          },
+                        ]}
+                        onPress={() =>
+                          updateStatus(
+                            ord.id,
+                            ord.status
+                          )
+                        }
+                      >
+                        <Text
+                          style={{
+                            color:
+                              '#FFF',
+                            fontWeight:
+                              '900',
+                            fontSize: 10,
+                          }}
+                        >
+                          {getNextActionLabel(
+                            ord.status
+                          )}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </GlassCard>
+                )
+              )
+            )}
+          </>
         )}
 
-        {activeTab === 'delicate' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Sensitive Fabrics Damage Control Ledger</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Ensure safety compliance for premium designer student silks or heavy professor woolens. Cross-check fabric tags before loading dryers.
-              </Text>
-            </View>
+        {/* DELICATE */}
+        {activeTab ===
+          'delicate' && (
+          <>
+            {delicateWarnings.map(
+              (item) => (
+                <GlassCard
+                  key={item.id}
+                  style={
+                    styles.warningCard
+                  }
+                >
+                  <View
+                    style={
+                      styles.orderHeader
+                    }
+                  >
+                    <View
+                      style={{
+                        flex: 1,
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.customerName,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        {
+                          item.customerName
+                        }
+                      </Text>
 
-            {delicateWarnings.map(dw => (
-              <GlassCard key={dw.id} style={styles.delicateCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentName, { color: colors.text }]}> {dw.itemName}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Owner: {dw.owner}</Text>
+                      <Text
+                        style={{
+                          color:
+                            colors.textMuted,
+                          fontSize: 11,
+                        }}
+                      >
+                        {
+                          item.room
+                        }
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        {
+                          backgroundColor:
+                            item.status ===
+                            'Received'
+                              ? colors.error +
+                                '20'
+                              : colors.success +
+                                '20',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            item.status ===
+                            'Received'
+                              ? colors.error
+                              : colors.success,
+                          fontWeight:
+                            '900',
+                          fontSize: 9,
+                        }}
+                      >
+                        {item.status ===
+                        'Received'
+                          ? 'CHECK'
+                          : 'SAFE'}
+                      </Text>
+                    </View>
                   </View>
-                  
-                  <View style={[styles.statusBadge, { backgroundColor: dw.verified ? colors.success + '20' : colors.error + '20' }]}>
-                    <Text style={{ fontSize: 9, color: dw.verified ? colors.success : colors.error, fontWeight: '900' }}>
-                      {dw.verified ? 'VERIFIED SAFE' : 'PENDING CHECK'}
+
+                  <View
+                    style={[
+                      styles.warningPanel,
+                      {
+                        borderTopColor:
+                          colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.warningText,
+                        {
+                          color:
+                            colors.text,
+                        },
+                      ]}
+                    >
+                      {
+                        item.delicateTag
+                      }
                     </Text>
                   </View>
-                </View>
 
-                <View style={[styles.delicateAlertPanel, { borderTopColor: colors.border }]}>
-                  <View style={[styles.fabricTagBadge, { backgroundColor: colors.error + '20' }]}>
-                    <AlertTriangle size={12} color={colors.error} style={{ marginRight: 4 }} />
-                    <Text style={{ fontSize: 10, color: colors.error, fontWeight: '900' }}>{dw.dangerTag.toUpperCase()}</Text>
-                  </View>
-                  
-                  <Text style={[styles.warningInstructionText, { color: colors.text }]}>
-                    Handling Guide: {dw.warning}
-                  </Text>
-                </View>
+                  {item.status ===
+                    'Received' && (
+                    <TouchableOpacity
+                      style={[
+                        styles.verifyBtn,
+                        {
+                          backgroundColor:
+                            colors.success,
+                        },
+                      ]}
+                      onPress={() =>
+                        verifyDelicate(
+                          item.id
+                        )
+                      }
+                    >
+                      <CheckCircle2
+                        size={14}
+                        color="#FFF"
+                      />
 
-                {!dw.verified && (
-                  <TouchableOpacity 
-                    style={[styles.verifyButton, { backgroundColor: colors.success }]}
-                    onPress={() => verifyWarning(dw.id)}
-                  >
-                    <CheckCircle2 size={13} color="#FFF" style={{ marginRight: 4 }} />
-                    <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>Garment Checked: Safe to Process</Text>
-                  </TouchableOpacity>
-                )}
-              </GlassCard>
-            ))}
-          </View>
+                      <Text
+                        style={{
+                          color:
+                            '#FFF',
+                          fontWeight:
+                            '800',
+                          marginLeft: 6,
+                          fontSize: 11,
+                        }}
+                      >
+                        Mark Safe
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </GlassCard>
+              )
+            )}
+          </>
         )}
 
-        {activeTab === 'schedule' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Scheduled PG Pickup & Drop Slots</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Track laundry collection runs requested by students from hostels.
-              </Text>
-            </View>
-
+        {/* SCHEDULE */}
+        {activeTab ===
+          'schedule' && (
+          <>
             {[
-              { id: 's1', house: 'Hostel B - Rm 212', slots: '10:00 AM - 12:00 PM', runner: 'Ravi Pal', action: 'Pickup Clothes Bag' },
-              { id: 's2', house: 'PG Block 4 - Rm 5', slots: '02:00 PM - 04:00 PM', runner: 'Amit Yadav', action: 'Drop Ironed Clothes' }
-            ].map(slot => (
-              <GlassCard key={slot.id} style={styles.scheduleCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentName, { color: colors.text }]}>{slot.house}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Action:  {slot.action}</Text>
+              {
+                id: '1',
+                place:
+                  'Hostel A-203',
+                time:
+                  '10:00 AM - 12:00 PM',
+                runner:
+                  'Ravi',
+                action:
+                  'Pickup',
+              },
+              {
+                id: '2',
+                place:
+                  'PG Royal - 3',
+                time:
+                  '4:00 PM - 6:00 PM',
+                runner:
+                  'Amit',
+                action:
+                  'Delivery',
+              },
+            ].map((slot) => (
+              <GlassCard
+                key={slot.id}
+                style={
+                  styles.scheduleCard
+                }
+              >
+                <View
+                  style={
+                    styles.orderHeader
+                  }
+                >
+                  <View
+                    style={{
+                      flex: 1,
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.customerName,
+                        {
+                          color:
+                            colors.text,
+                        },
+                      ]}
+                    >
+                      {
+                        slot.place
+                      }
+                    </Text>
+
+                    <Text
+                      style={{
+                        color:
+                          colors.textMuted,
+                        fontSize: 11,
+                      }}
+                    >
+                      {
+                        slot.action
+                      }
+                    </Text>
                   </View>
-                  <View style={[styles.statusBadge, { backgroundColor: colors.primary + '20' }]}>
-                    <Text style={{ fontSize: 9, color: colors.primary, fontWeight: '900' }}>{slot.slots}</Text>
+
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      {
+                        backgroundColor:
+                          colors.primary +
+                          '20',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          colors.primary,
+                        fontWeight:
+                          '900',
+                        fontSize: 9,
+                      }}
+                    >
+                      {
+                        slot.time
+                      }
+                    </Text>
                   </View>
                 </View>
-                
-                <View style={[styles.scheduleFooter, { borderTopColor: colors.border }]}>
-                  <Text style={{ fontSize: 11, color: colors.textMuted }}>Assigned Runner:  {slot.runner}</Text>
-                  <TouchableOpacity 
-                    style={[styles.scheduleBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Alert.alert('Runner Dispatched', `${slot.runner} is notified of the ${slot.action} run.`)}
+
+                <View
+                  style={[
+                    styles.scheduleFooter,
+                    {
+                      borderTopColor:
+                        colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color:
+                        colors.textMuted,
+                      fontSize: 11,
+                    }}
                   >
-                    <Text style={{ color: colors.text, fontSize: 10, fontWeight: '700' }}>Dispatch Runner</Text>
+                    Runner:{' '}
+                    {
+                      slot.runner
+                    }
+                  </Text>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.dispatchBtn,
+                      {
+                        backgroundColor:
+                          colors.surface,
+                      },
+                    ]}
+                    onPress={() =>
+                      Alert.alert(
+                        'Runner Assigned',
+                        `${slot.runner} notified.`
+                      )
+                    }
+                  >
+                    <Text
+                      style={{
+                        color:
+                          colors.text,
+                        fontSize: 10,
+                        fontWeight:
+                          '700',
+                      }}
+                    >
+                      Dispatch
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </GlassCard>
             ))}
-          </View>
+          </>
         )}
 
-        <View style={{ height: 100 }} />
+        <View
+          style={{
+            height: 120,
+          }}
+        />
       </ScrollView>
 
-      {/* Floating Bottom Navigation */}
-      <View style={[
-        styles.bottomTabBar, 
-        { 
-          backgroundColor: colors.surface + 'E8', 
-          borderColor: colors.border,
-          shadowColor: colors.primary,
-        }
-      ]}>
+      {/* BOTTOM NAV */}
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            backgroundColor:
+              colors.surface +
+              'E8',
+            borderColor:
+              colors.border,
+          },
+        ]}
+      >
         {[
-            { id: 'orders', label: 'Wash Orders', icon: Shirt },
-            { id: 'delicate', label: 'Delicate Safety', icon: AlertTriangle },
-            { id: 'schedule', label: 'Pickup Slots', icon: Calendar },
-          ].map(tab => {
-          const isActive = activeTab === tab.id;
+          {
+            id: 'orders',
+            label: 'Orders',
+            icon: Shirt,
+          },
+          {
+            id: 'delicate',
+            label: 'Safety',
+            icon: AlertTriangle,
+          },
+          {
+            id: 'schedule',
+            label: 'Pickup',
+            icon: Calendar,
+          },
+        ].map((tab) => {
           const Icon = tab.icon;
+
+          const active =
+            activeTab === tab.id;
+
           return (
             <TouchableOpacity
               key={tab.id}
-              style={[styles.bottomTabBtn, isActive && { backgroundColor: colors.primary + '18' }]}
-              onPress={() => setActiveTab(tab.id as any)}
+              style={[
+                styles.bottomBtn,
+                active && {
+                  backgroundColor:
+                    colors.primary +
+                    '20',
+                },
+              ]}
+              onPress={() =>
+                setActiveTab(
+                  tab.id as TabType
+                )
+              }
             >
-              <View style={[styles.bottomTabIndicator, isActive && { backgroundColor: colors.primary }]} />
-              <Icon size={20} color={isActive ? colors.primary : colors.textMuted} />
-              <Text style={[styles.bottomTabLabel, { color: isActive ? colors.primary : colors.textMuted }]}>
-                {tab.label.trim()}
+              <Icon
+                size={20}
+                color={
+                  active
+                    ? colors.primary
+                    : colors.textMuted
+                }
+              />
+
+              <Text
+                style={{
+                  color: active
+                    ? colors.primary
+                    : colors.textMuted,
+                  fontSize: 10,
+                  fontWeight: '900',
+                }}
+              >
+                {tab.label}
               </Text>
             </TouchableOpacity>
           );
@@ -561,303 +1723,350 @@ function LaundryManagerScreenMerchant() {
       </View>
     </View>
   );
-
 }
 
-
-const styles: any = StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 8,
   },
-  tabBarContainer: {
-    height: 48,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-  },
-  tabsScroll: {
-    paddingHorizontal: Spacing.md,
-    alignItems: 'center',
-    gap: 8,
-  },
-  tabBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  tabIcon: {
-    marginRight: 4,
-  },
-  tabLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
+
   scrollContent: {
     padding: Spacing.md,
   },
-  introHeader: {
+
+  hudCard: {
+    padding: 20,
+    borderRadius: 24,
+    marginBottom: 20,
+  },
+
+  hudHeader: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+    alignItems: 'center',
+  },
+
+  hudMini: {
+    color:
+      'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+
+  hudValue: {
+    color: '#FFF',
+    fontSize: 28,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+
+  hudDivider: {
+    height: 1,
+    backgroundColor:
+      'rgba(255,255,255,0.15)',
+    marginVertical: 16,
+  },
+
+  hudStatsRow: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+  },
+
+  hudStatValue: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+
+  hudStatLabel: {
+    color:
+      'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    marginTop: 2,
+  },
+
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+    alignItems: 'center',
     marginBottom: 16,
   },
-  introTitle: {
-    fontSize: 18,
-    fontWeight: '800',
+
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '900',
   },
-  introSub: {
-    fontSize: 12,
+
+  sectionSub: {
     marginTop: 4,
-    lineHeight: 16,
+    fontSize: 12,
   },
-  searchRow: {
-    flexDirection: 'row',
-    marginBottom: 12,
-    gap: 8,
+
+  addBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
+
   searchBar: {
-    flex: 1,
+    height: 46,
+    borderWidth: 1,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
+    gap: 8,
+    marginBottom: 14,
   },
+
   searchInput: {
     flex: 1,
     fontSize: 13,
   },
-  addBtn: {
-    width: 44,
+
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+
+  formCard: {
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 16,
+  },
+
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+
+  formTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    marginLeft: 8,
+  },
+
+  formInput: {
+    height: 46,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+
+  inlineGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+
+  inputLabel: {
+    fontSize: 10,
+    marginBottom: 4,
+    fontWeight: '800',
+  },
+
+  serviceRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+
+  serviceChip: {
+    flex: 1,
     height: 44,
+    borderWidth: 1,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  submitBtn: {
+    height: 46,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 4,
+    marginTop: 4,
   },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 16,
+
+  submitText: {
+    color: '#FFF',
+    fontWeight: '900',
   },
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  filterChipTxt: {
-    fontSize: 11,
-  },
-  modalFormCard: {
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-  },
-  formHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  formTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    flex: 1,
-    marginLeft: 6,
-  },
-  formInput: {
-    height: 40,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    fontSize: 13,
-    marginBottom: 10,
-    backgroundColor: 'rgba(255,255,255,0.01)',
-  },
-  inlineInputsGrid: {
-    flexDirection: 'row',
-    marginBottom: 10,
-  },
-  inputLabel: {
-    fontSize: 10,
-    marginBottom: 2,
-    fontWeight: '700',
-  },
-  selectBoxArea: {
-    flexDirection: 'row',
-    gap: 4,
-    height: 40,
-  },
-  smallSelectChip: {
-    flex: 1,
-    height: 36,
-    borderWidth: 1,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  submitBtn: {
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 6,
-  },
+
   orderCard: {
-    padding: 14,
+    padding: 16,
+    borderRadius: 20,
     marginBottom: 12,
-    borderRadius: 16,
   },
+
+  orderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  customerName: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+
   statusBadge: {
     flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
     alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
   },
-  particularsPanel: {
+
+  detailsRow: {
     borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 4,
+    marginTop: 12,
+    paddingTop: 12,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent:
+      'space-between',
   },
-  boldLabel: {
-    fontSize: 13,
+
+  infoLabel: {
+    fontSize: 9,
+    color: '#9CA3AF',
     fontWeight: '800',
+  },
+
+  infoValue: {
+    fontSize: 14,
+    fontWeight: '900',
     marginTop: 2,
   },
-  delicateBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 8,
-    borderRadius: 8,
+
+  warningBox: {
+    marginTop: 12,
+    padding: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    marginTop: 10,
-  },
-  invoiceRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+  },
+
+  priceRow: {
     borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+    alignItems: 'center',
   },
-  qtyDisplayTxt: {
-    fontSize: 14,
-    fontWeight: '800',
+
+  priceText: {
+    fontSize: 16,
+    fontWeight: '900',
   },
-  timelineTransitionArea: {
+
+  actionRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 12,
+    marginTop: 14,
   },
-  shareSlipBtn: {
-    flexDirection: 'row',
-    paddingHorizontal: 12,
-    height: 32,
-    borderRadius: 8,
+
+  shareBtn: {
+    height: 38,
+    borderRadius: 12,
+    paddingHorizontal: 14,
     justifyContent: 'center',
     alignItems: 'center',
+    flexDirection: 'row',
   },
-  transitionButton: {
+
+  processBtn: {
     flex: 1,
-    height: 32,
-    borderRadius: 8,
+    height: 38,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  delicateCard: {
-    padding: 14,
+
+  warningCard: {
+    padding: 16,
+    borderRadius: 20,
     marginBottom: 12,
-    borderRadius: 16,
   },
-  delicateAlertPanel: {
+
+  warningPanel: {
     borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 6,
-    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
   },
-  fabricTagBadge: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-    alignItems: 'center',
+
+  warningText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
   },
-  warningInstructionText: {
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  verifyButton: {
-    height: 32,
-    borderRadius: 8,
+
+  verifyBtn: {
+    marginTop: 14,
+    height: 40,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 12,
     flexDirection: 'row',
   },
+
   scheduleCard: {
-    padding: 14,
+    padding: 16,
+    borderRadius: 20,
     marginBottom: 12,
-    borderRadius: 16,
   },
+
   scheduleFooter: {
     borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 6,
+    marginTop: 12,
+    paddingTop: 12,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent:
+      'space-between',
     alignItems: 'center',
   },
-  scheduleBtn: {
-    paddingHorizontal: 12,
-    height: 28,
-    borderRadius: 6,
+
+  dispatchBtn: {
+    height: 34,
+    borderRadius: 10,
+    paddingHorizontal: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  bottomTabBar: {
+
+  bottomBar: {
     position: 'absolute',
-    bottom: 20,
     left: 16,
     right: 16,
-    height: 72,
-    borderRadius: 22,
+    bottom: 20,
+    height: 74,
+    borderRadius: 24,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 6,
-    elevation: 12,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
+    paddingHorizontal: 8,
   },
-  bottomTabBtn: {
+
+  bottomBtn: {
     flex: 1,
-    height: 56,
-    borderRadius: 16,
+    height: 58,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 3,
-  },
-  bottomTabIndicator: {
-    width: 16,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: 'transparent',
-    marginBottom: 2,
-  },
-  bottomTabLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: 0.2,
+    gap: 4,
   },
 });

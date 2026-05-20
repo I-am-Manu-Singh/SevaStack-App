@@ -1,141 +1,250 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  ScrollView, 
-  TouchableOpacity, 
-  TextInput, 
-  Image, 
-  Alert, 
-  ActivityIndicator,
+// KiranaManagerScreen.tsx
+
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+} from 'react';
+
+import {
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  RefreshControl,
   Share,
-  RefreshControl
+  ActivityIndicator,
 } from 'react-native';
+
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
-import { 
+
+import {
   ShoppingBag,
-  TrendingUp,
-  AlertCircle,
   Plus,
   Search,
   Share2,
-  Trash2,
-  ChevronRight,
   UserPlus,
   Sparkles,
-  Clock,
   ArrowUpRight,
   ArrowDownLeft,
   Percent,
-  Printer,
-  QrCode,
   ShieldAlert,
-  CheckCircle2
+  CheckCircle2,
+  Clock3,
+  QrCode,
+  Wallet,
+  TrendingUp,
+  PackageSearch,
+  AlertTriangle,
+  Trash2,
+  Receipt,
 } from 'lucide-react-native';
-import { Colors, Spacing, Typography } from '@/constants/Theme';
+
+import { Spacing } from '@/constants/Theme';
 import { GlassCard } from '@/components/GlassCard';
 import { useApp } from '@/lib/AppContext';
 import { supabase } from '@/lib/supabase';
 import { CustomerBusinessView } from '@/components/CustomerBusinessView';
 
 export default function KiranaManagerScreen() {
-  const { userRole, businessType } = useApp();
-  
-  if (userRole === 'customer' || businessType !== 'Kirana') {
-    return <CustomerBusinessView type="Kirana" />;
+  const { userRole, businessType } =
+    useApp();
+
+  if (
+    userRole === 'customer' ||
+    businessType !== 'Kirana'
+  ) {
+    return (
+      <CustomerBusinessView type="Kirana" />
+    );
   }
 
-  return <KiranaManagerScreenMerchant />;
+  return <KiranaMerchantScreen />;
 }
 
-function KiranaManagerScreenMerchant() {
+function KiranaMerchantScreen() {
+  const { colors, profile } = useApp();
 
-  const { colors, theme, profile, userRole, businessType } = useApp();
-  
-  
+  const [activeTab, setActiveTab] =
+    useState<
+      'khata' | 'inventory' | 'expiry'
+    >('khata');
 
-  const [activeTab, setActiveTab] = useState<'khata' | 'inventory' | 'expiry' | 'pos'>('khata');
+  const [loading, setLoading] =
+    useState(true);
 
-  // Dynamic Supabase State
-  const [khataRecords, setKhataRecords] = useState<any[]>([]);
-  const [inventory, setInventory] = useState<any[]>([]);
-  const [expiringItems, setExpiringItems] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [searchQuery, setSearchQuery] =
+    useState('');
+
+  const [khataFilter, setKhataFilter] =
+    useState<
+      'All' | 'Dues' | 'Exceeded'
+    >('All');
+
+  const [khataRecords, setKhataRecords] =
+    useState<any[]>([]);
+
+  const [inventory, setInventory] =
+    useState<any[]>([]);
+
+  const [expiryItems, setExpiryItems] =
+    useState<any[]>([]);
+
+  // MODALS
+  const [showNewLedger, setShowNewLedger] =
+    useState(false);
+
+  const [settlingRecord, setSettlingRecord] =
+    useState<any | null>(null);
+
+  const [addDueCustomer, setAddDueCustomer] =
+    useState<any | null>(null);
+
+  // NEW LEDGER
+  const [customerName, setCustomerName] =
+    useState('');
+
+  const [customerHostel, setCustomerHostel] =
+    useState('');
+
+  const [creditLimit, setCreditLimit] =
+    useState('3000');
+
+  // DUE
+  const [dueAmount, setDueAmount] =
+    useState('');
+
+  const [dueRemarks, setDueRemarks] =
+    useState('');
+
+  // SETTLE
+  const [settleAmount, setSettleAmount] =
+    useState('');
+
+  const [paymentMethod, setPaymentMethod] =
+    useState<'UPI' | 'Cash'>('UPI');
+
+  const [showQr, setShowQr] =
+    useState(false);
 
   const fetchData = useCallback(async () => {
     if (!profile?.id) return;
+
     try {
-      const [khataRes, invRes] = await Promise.all([
-        supabase.from('khata_records').select('*').eq('merchant_id', profile.id),
-        supabase.from('inventory').select('*').eq('merchant_id', profile.id)
-      ]);
+      const [khataRes, inventoryRes] =
+        await Promise.all([
+          supabase
+            .from('khata_records')
+            .select('*')
+            .eq(
+              'merchant_id',
+              profile.id
+            ),
 
-      let finalKhata = khataRes.data || [];
-      if (!khataRes.data || khataRes.data.length === 0) {
-        const defaultKhata = [
-          { amount: 1500, description: JSON.stringify({ studentName: 'Rohan Gupta', hostel: 'Hostel 4, Room 101', creditLimit: 3000 }) },
-          { amount: 3200, description: JSON.stringify({ studentName: 'Deepak Kumar', hostel: 'PG Royal, Room 4', creditLimit: 3000 }) }
-        ].map(k => ({ ...k, merchant_id: profile.id }));
-        const seedRes = await supabase.from('khata_records').insert(defaultKhata).select();
-        if (seedRes.data) finalKhata = seedRes.data;
-      }
+          supabase
+            .from('inventory')
+            .select('*')
+            .eq(
+              'merchant_id',
+              profile.id
+            ),
+        ]);
 
-      const mappedKhata = finalKhata.map((rec: any) => {
-        let meta = { studentName: 'Student Ledger', hostel: 'PG Block-A', creditLimit: 3000 };
-        try {
-          if (rec.description && (rec.description.startsWith('{') || rec.description.startsWith('['))) {
-            meta = JSON.parse(rec.description);
-          } else if (rec.description) {
-            meta.studentName = rec.description;
-          }
-        } catch (err) {}
-        return {
-          id: rec.id,
-          studentName: meta.studentName || 'Student Ledger',
-          hostel: meta.hostel || 'PG Block-A',
-          amountDue: parseFloat(rec.amount || '0'),
-          creditLimit: meta.creditLimit || 3000,
-          status: parseFloat(rec.amount || '0') >= (meta.creditLimit || 3000) ? 'Warning' : 'Approved',
-          lastUpdated: rec.created_at ? new Date(rec.created_at).toLocaleDateString() : 'Just Now'
-        };
-      });
+      const khataData =
+        khataRes.data || [];
+
+      const mappedKhata =
+        khataData.map((rec: any) => {
+          let meta = {
+            studentName:
+              'Customer',
+            hostel:
+              'Unknown',
+            creditLimit: 3000,
+          };
+
+          try {
+            meta = JSON.parse(
+              rec.description
+            );
+          } catch {}
+
+          return {
+            id: rec.id,
+            studentName:
+              meta.studentName,
+            hostel: meta.hostel,
+            amountDue:
+              parseFloat(
+                rec.amount || 0
+              ),
+            creditLimit:
+              meta.creditLimit,
+            status:
+              parseFloat(
+                rec.amount || 0
+              ) >=
+              meta.creditLimit
+                ? 'Exceeded'
+                : 'Approved',
+          };
+        });
+
       setKhataRecords(mappedKhata);
 
-      let finalInv = invRes.data || [];
-      if (!invRes.data || invRes.data.length === 0) {
-        const defaultInv = [
-          { name: 'Maggie Noodles 12-Pack', stock: 45, threshold: 10, unit: 'packet', category: 'Packaged Food' },
-          { name: 'Mother Dairy Toned Milk', stock: 30, threshold: 15, unit: 'packet', category: 'Dairy' },
-          { name: 'Lays Potato Chips Classic', stock: 55, threshold: 12, unit: 'packet', category: 'Snacks' },
-          { name: 'Coca Cola Bottle 750ml', stock: 8, threshold: 10, unit: 'bottle', category: 'Beverages' }
-        ].map(item => ({ ...item, merchant_id: profile.id }));
-        const seedRes = await supabase.from('inventory').insert(defaultInv).select();
-        if (seedRes.data) finalInv = seedRes.data;
-      }
+      const inventoryData =
+        inventoryRes.data || [];
 
-      const mappedInv = finalInv.map((item: any) => ({
-        id: item.id,
-        itemName: item.name,
-        stock: item.stock || 0,
-        threshold: item.threshold || 10,
-        unit: item.unit || 'piece',
-        category: item.category || 'General'
-      }));
-      setInventory(mappedInv);
+      setInventory(
+        inventoryData.map(
+          (item: any) => ({
+            id: item.id,
+            itemName: item.name,
+            stock: item.stock,
+            threshold:
+              item.threshold,
+            category:
+              item.category,
+            unit:
+              item.unit ||
+              'pcs',
+          })
+        )
+      );
 
-      setExpiringItems([
-        { id: 'exp-1', itemName: 'Amul Taaza Milk 1L', originalPrice: 66, discount: 30, daysLeft: 1, activeSale: false },
-        { id: 'exp-2', itemName: 'Britannia Sliced Bread', originalPrice: 45, discount: 25, daysLeft: 2, activeSale: false },
-        { id: 'exp-3', itemName: 'Mother Dairy Curd 400g', originalPrice: 35, discount: 20, daysLeft: 3, activeSale: false }
+      setExpiryItems([
+        {
+          id: '1',
+          itemName:
+            'Amul Milk 1L',
+          originalPrice: 66,
+          discount: 25,
+          daysLeft: 1,
+          activeSale: false,
+        },
+        {
+          id: '2',
+          itemName:
+            'Bread Pack',
+          originalPrice: 45,
+          discount: 30,
+          daysLeft: 2,
+          activeSale: true,
+        },
       ]);
     } catch (e) {
-      console.error("Error loading Kirana data:", e);
+      console.log(e);
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   }, [profile?.id]);
 
@@ -144,632 +253,1833 @@ function KiranaManagerScreenMerchant() {
   }, [fetchData]);
 
   const onRefresh = () => {
-    setIsRefreshing(true);
+    setRefreshing(true);
     fetchData();
   };
 
-  // Search/Filters
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeKhataFilter, setActiveKhataFilter] = useState<'All' | 'Dues' | 'Exceeded'>('All');
+  // ANALYTICS
+  const totalOutstanding =
+    khataRecords.reduce(
+      (sum, item) =>
+        sum + item.amountDue,
+      0
+    );
 
-  // POS / Settle State
-  const [settlingRecord, setSettlingRecord] = useState<any | null>(null);
-  const [settleAmount, setSettleAmount] = useState('');
-  const [settleMethod, setSettleMethod] = useState<'Cash' | 'UPI'>('UPI');
-  const [qrGenerated, setQrGenerated] = useState(false);
+  const exceededAccounts =
+    khataRecords.filter(
+      (k) =>
+        k.amountDue >=
+        k.creditLimit
+    ).length;
 
-  // Add Dues Form states
-  const [addDueModal, setAddDueModal] = useState(false);
-  const [addDueCustomer, setAddDueCustomer] = useState<any | null>(null);
-  const [dueAmountInput, setDueAmountInput] = useState('');
-  const [dueRemarks, setDueRemarks] = useState('');
+  const lowStockItems =
+    inventory.filter(
+      (i) =>
+        i.stock <= i.threshold
+    ).length;
 
-  // Add Item to Khata Record Modal
-  const [newCustomerName, setNewCustomerName] = useState('');
-  const [newCustomerHostel, setNewCustomerHostel] = useState('');
-  const [newCustomerLimit, setNewCustomerLimit] = useState('3000');
-  const [newCustomerModal, setNewCustomerModal] = useState(false);
+  // FILTERS
+  const filteredKhata =
+    useMemo(() => {
+      return khataRecords.filter(
+        (rec) => {
+          const matchesSearch =
+            rec.studentName
+              .toLowerCase()
+              .includes(
+                searchQuery.toLowerCase()
+              ) ||
+            rec.hostel
+              .toLowerCase()
+              .includes(
+                searchQuery.toLowerCase()
+              );
 
-  // Log manual repayment/dues transaction
-  const handleRecordRepayment = async () => {
-    if (!settleAmount || parseFloat(settleAmount) <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid amount.');
-      return;
-    }
+          const matchesFilter =
+            khataFilter ===
+              'All' ||
+            (khataFilter ===
+              'Dues' &&
+              rec.amountDue > 0) ||
+            (khataFilter ===
+              'Exceeded' &&
+              rec.amountDue >=
+                rec.creditLimit);
 
-    const amount = parseFloat(settleAmount);
-    const newDue = Math.max(0, settlingRecord.amountDue - amount);
-
-    try {
-      const { error } = await supabase
-        .from('khata_records')
-        .update({
-          amount: newDue
-        })
-        .eq('id', settlingRecord.id);
-
-      if (error) throw error;
-
-      Alert.alert(
-        'Payment Settled', 
-        `Logged ₹${amount} repayment via ${settleMethod} for ${settlingRecord.studentName}. Remaining Dues: ₹${newDue}.`
+          return (
+            matchesSearch &&
+            matchesFilter
+          );
+        }
       );
+    }, [
+      khataRecords,
+      searchQuery,
+      khataFilter,
+    ]);
 
-      setSettlingRecord(null);
-      setSettleAmount('');
-      setQrGenerated(false);
-      fetchData();
-    } catch (e: any) {
-      Alert.alert("Repayment Failed", e.message);
-    }
-  };
-
-  // Add fresh dues
-  const handleAddDues = async () => {
-    if (!dueAmountInput || parseFloat(dueAmountInput) <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid due amount.');
-      return;
-    }
-
-    const amount = parseFloat(dueAmountInput);
-    const newDue = addDueCustomer.amountDue + amount;
-
-    try {
-      const { error } = await supabase
-        .from('khata_records')
-        .update({
-          amount: newDue
-        })
-        .eq('id', addDueCustomer.id);
-
-      if (error) throw error;
-
-      if (newDue > addDueCustomer.creditLimit) {
+  // ADD LEDGER
+  const createLedger =
+    async () => {
+      if (
+        !customerName ||
+        !customerHostel
+      ) {
         Alert.alert(
-          'Credit Limit Approached', 
-          `${addDueCustomer.studentName} has crossed their defined credit limit. Dues: ₹${newDue}.`
+          'Missing Info',
+          'Enter name and hostel.'
         );
-      } else {
-        Alert.alert('Dues Logged', `Added ₹${amount} due entry successfully for ${addDueCustomer.studentName}.`);
+        return;
       }
 
-      setAddDueCustomer(null);
-      setDueAmountInput('');
-      setDueRemarks('');
-      fetchData();
-    } catch (e: any) {
-      Alert.alert("Failed to add dues", e.message);
-    }
-  };
+      try {
+        const meta = {
+          studentName:
+            customerName,
+          hostel:
+            customerHostel,
+          creditLimit:
+            parseFloat(
+              creditLimit
+            ) || 3000,
+        };
 
-  // Register New Student Ledger
-  const handleAddNewCustomer = async () => {
-    if (!newCustomerName || !newCustomerHostel) {
-      Alert.alert('Missing Info', 'Please enter both student Name and Hostel/PG address.');
-      return;
-    }
+        const { error } =
+          await supabase
+            .from(
+              'khata_records'
+            )
+            .insert([
+              {
+                merchant_id:
+                  profile?.id,
+                amount: 0,
+                description:
+                  JSON.stringify(
+                    meta
+                  ),
+              },
+            ]);
 
-    const meta = {
-      studentName: newCustomerName,
-      hostel: newCustomerHostel,
-      creditLimit: parseFloat(newCustomerLimit) || 3000
+        if (error)
+          throw error;
+
+        Alert.alert(
+          'Success',
+          'Ledger account created.'
+        );
+
+        setCustomerName('');
+        setCustomerHostel('');
+        setCreditLimit(
+          '3000'
+        );
+
+        setShowNewLedger(
+          false
+        );
+
+        fetchData();
+      } catch (e: any) {
+        Alert.alert(
+          'Error',
+          e.message
+        );
+      }
     };
 
-    try {
-      const { error } = await supabase
-        .from('khata_records')
-        .insert([{
-          merchant_id: profile.id,
-          amount: 0,
-          type: 'income',
-          description: JSON.stringify(meta)
-        }]);
-
-      if (error) throw error;
-
-      Alert.alert('Ledger Generated', `Created Khata ledger account for ${newCustomerName}.`);
-      setNewCustomerName('');
-      setNewCustomerHostel('');
-      setNewCustomerLimit('3000');
-      setNewCustomerModal(false);
-      fetchData();
-    } catch (e: any) {
-      Alert.alert("Failed to open ledger", e.message);
+  // ADD DUE
+  const addDue = async () => {
+    if (
+      !dueAmount ||
+      parseFloat(
+        dueAmount
+      ) <= 0
+    ) {
+      Alert.alert(
+        'Invalid',
+        'Enter valid amount.'
+      );
+      return;
     }
-  };
-
-  // Restock Inventory item
-  const restockItem = async (id: string, qty: number) => {
-    const item = inventory.find(i => i.id === id);
-    if (!item) return;
-
-    const newStock = item.stock + qty;
 
     try {
-      const { error } = await supabase
-        .from('inventory')
-        .update({ stock: newStock })
-        .eq('id', id);
-
-      if (error) throw error;
-      fetchData();
-    } catch (e: any) {
-      Alert.alert("Failed to restock item", e.message);
-    }
-  };
-
-  // Toggle Expiry Clearance sale
-  const toggleClearanceSale = (id: string) => {
-    setExpiringItems(prev => prev.map(item => {
-      if (item.id === id) {
-        const newState = !item.activeSale;
-        Alert.alert(
-          newState ? 'Clearance Active' : 'Clearance Halted', 
-          newState ? `Broadcasting ${item.discount}% discount for ${item.itemName} on student marketplace!` : `Halted clearance sale broadcast.`
+      const newDue =
+        addDueCustomer.amountDue +
+        parseFloat(
+          dueAmount
         );
-        return { ...item, activeSale: newState };
-      }
-      return item;
-    }));
+
+      const { error } =
+        await supabase
+          .from(
+            'khata_records'
+          )
+          .update({
+            amount: newDue,
+          })
+          .eq(
+            'id',
+            addDueCustomer.id
+          );
+
+      if (error)
+        throw error;
+
+      Alert.alert(
+        'Logged',
+        'Outstanding due added.'
+      );
+
+      setAddDueCustomer(
+        null
+      );
+
+      setDueAmount('');
+      setDueRemarks('');
+
+      fetchData();
+    } catch (e: any) {
+      Alert.alert(
+        'Error',
+        e.message
+      );
+    }
   };
 
-  // Filters
-  const filteredKhata = khataRecords.filter(rec => {
-    const matchesSearch = rec.studentName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          rec.hostel.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = 
-      activeKhataFilter === 'All' || 
-      (activeKhataFilter === 'Dues' && rec.amountDue > 0) || 
-      (activeKhataFilter === 'Exceeded' && rec.amountDue >= rec.creditLimit);
-    return matchesSearch && matchesStatus;
-  });
+  // SETTLE
+  const settlePayment =
+    async () => {
+      if (
+        !settleAmount ||
+        parseFloat(
+          settleAmount
+        ) <= 0
+      ) {
+        Alert.alert(
+          'Invalid',
+          'Enter valid repayment.'
+        );
+        return;
+      }
+
+      try {
+        const newDue =
+          Math.max(
+            0,
+            settlingRecord.amountDue -
+              parseFloat(
+                settleAmount
+              )
+          );
+
+        const { error } =
+          await supabase
+            .from(
+              'khata_records'
+            )
+            .update({
+              amount: newDue,
+            })
+            .eq(
+              'id',
+              settlingRecord.id
+            );
+
+        if (error)
+          throw error;
+
+        Alert.alert(
+          'Settled',
+          `₹${settleAmount} received successfully.`
+        );
+
+        setSettlingRecord(
+          null
+        );
+
+        setSettleAmount(
+          ''
+        );
+
+        setShowQr(false);
+
+        fetchData();
+      } catch (e: any) {
+        Alert.alert(
+          'Error',
+          e.message
+        );
+      }
+    };
+
+  // RESTOCK
+  const restockItem =
+    async (
+      itemId: string,
+      qty: number
+    ) => {
+      const item =
+        inventory.find(
+          (i) =>
+            i.id === itemId
+        );
+
+      if (!item) return;
+
+      try {
+        const { error } =
+          await supabase
+            .from('inventory')
+            .update({
+              stock:
+                item.stock +
+                qty,
+            })
+            .eq(
+              'id',
+              itemId
+            );
+
+        if (error)
+          throw error;
+
+        fetchData();
+      } catch (e: any) {
+        Alert.alert(
+          'Error',
+          e.message
+        );
+      }
+    };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor:
+            colors.background,
+        },
+      ]}
+    >
       <StatusBar style="light" />
-      <Stack.Screen options={{ 
-        title: 'Kirana & Khata Manager',
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.primary,
-        headerShown: true
-      }} />
 
-      {/* Sub-Tabs */}
+      <Stack.Screen
+        options={{
+          title:
+            'Kirana Manager',
+          headerTintColor:
+            colors.primary,
+          headerStyle: {
+            backgroundColor:
+              colors.background,
+          },
+        }}
+      />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
-        {activeTab === 'khata' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Student Khata & Credit Caps</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Manage credit accounts, record dynamic due purchases, and trigger repayments. Define custom credit ceilings to restrict outstanding limits.
+      <ScrollView
+        contentContainerStyle={
+          styles.scrollContent
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              refreshing
+            }
+            onRefresh={
+              onRefresh
+            }
+            tintColor={
+              colors.primary
+            }
+          />
+        }
+      >
+        {/* HUD */}
+        <GlassCard
+          style={[
+            styles.hudCard,
+            {
+              backgroundColor:
+                colors.primary,
+            },
+          ]}
+        >
+          <View
+            style={
+              styles.hudTop
+            }
+          >
+            <View>
+              <Text
+                style={
+                  styles.hudMini
+                }
+              >
+                TOTAL KHATA
+              </Text>
+
+              <Text
+                style={
+                  styles.hudAmount
+                }
+              >
+                ₹
+                {
+                  totalOutstanding
+                }
               </Text>
             </View>
 
-            {/* Quick search and Add customer ledger */}
-            <View style={styles.searchRow}>
-              <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Search size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
-                <TextInput
-                  placeholder="Search students, PG, hostel..."
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.searchInput, { color: colors.text }]}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                />
-              </View>
-              <TouchableOpacity 
-                style={[styles.addBtn, { backgroundColor: colors.primary }]}
-                onPress={() => setNewCustomerModal(!newCustomerModal)}
+            <Wallet
+              size={34}
+              color="#FFF"
+            />
+          </View>
+
+          <View
+            style={
+              styles.hudDivider
+            }
+          />
+
+          <View
+            style={
+              styles.analyticsRow
+            }
+          >
+            <View>
+              <Text
+                style={
+                  styles.analyticsValue
+                }
               >
-                <Plus size={20} color="#FFF" />
+                {
+                  exceededAccounts
+                }
+              </Text>
+
+              <Text
+                style={
+                  styles.analyticsLabel
+                }
+              >
+                Limit Exceeded
+              </Text>
+            </View>
+
+            <View>
+              <Text
+                style={
+                  styles.analyticsValue
+                }
+              >
+                {
+                  lowStockItems
+                }
+              </Text>
+
+              <Text
+                style={
+                  styles.analyticsLabel
+                }
+              >
+                Low Stock
+              </Text>
+            </View>
+
+            <View>
+              <Text
+                style={
+                  styles.analyticsValue
+                }
+              >
+                {
+                  expiryItems.length
+                }
+              </Text>
+
+              <Text
+                style={
+                  styles.analyticsLabel
+                }
+              >
+                Expiry
+              </Text>
+            </View>
+          </View>
+        </GlassCard>
+
+        {/* KHATA */}
+        {activeTab === 'khata' && (
+          <>
+            <View
+              style={
+                styles.headerRow
+              }
+            >
+              <View>
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    {
+                      color:
+                        colors.text,
+                    },
+                  ]}
+                >
+                  Khata Ledger
+                </Text>
+
+                <Text
+                  style={{
+                    color:
+                      colors.textMuted,
+                    fontSize: 12,
+                    marginTop: 2,
+                  }}
+                >
+                  Track student
+                  dues &
+                  repayments
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.addBtn,
+                  {
+                    backgroundColor:
+                      colors.primary,
+                  },
+                ]}
+                onPress={() =>
+                  setShowNewLedger(
+                    !showNewLedger
+                  )
+                }
+              >
+                <Plus
+                  size={20}
+                  color="#FFF"
+                />
               </TouchableOpacity>
             </View>
 
-            {/* Khata Status filters */}
-            <View style={styles.filterRow}>
-              {['All', 'Dues', 'Exceeded'].map(f => (
-                <TouchableOpacity
-                  key={f}
-                  style={[
-                    styles.filterChip,
-                    { backgroundColor: colors.surface, borderColor: colors.border },
-                    activeKhataFilter === f && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
-                  ]}
-                  onPress={() => setActiveKhataFilter(f as any)}
-                >
-                  <Text style={[
-                    styles.filterChipTxt,
-                    { color: colors.textMuted },
-                    activeKhataFilter === f && { color: colors.primary, fontWeight: '700' }
-                  ]}>
-                    {f}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            {/* SEARCH */}
+            <View
+              style={[
+                styles.searchBar,
+                {
+                  backgroundColor:
+                    colors.surface,
+                  borderColor:
+                    colors.border,
+                },
+              ]}
+            >
+              <Search
+                size={18}
+                color={
+                  colors.textMuted
+                }
+              />
+
+              <TextInput
+                value={
+                  searchQuery
+                }
+                onChangeText={
+                  setSearchQuery
+                }
+                placeholder="Search hostel/customer..."
+                placeholderTextColor={
+                  colors.textMuted
+                }
+                style={[
+                  styles.searchInput,
+                  {
+                    color:
+                      colors.text,
+                  },
+                ]}
+              />
             </View>
 
-            {/* Create Customer ledger modal card */}
-            {newCustomerModal && (
-              <GlassCard style={styles.modalFormCard}>
-                <View style={styles.formHeaderRow}>
-                  <Sparkles size={16} color={colors.primary} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>Generate Student Ledger</Text>
-                  <TouchableOpacity onPress={() => setNewCustomerModal(false)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Close</Text>
+            {/* FILTERS */}
+            <View
+              style={
+                styles.filterRow
+              }
+            >
+              {[
+                'All',
+                'Dues',
+                'Exceeded',
+              ].map((f) => {
+                const active =
+                  khataFilter ===
+                  f;
+
+                return (
+                  <TouchableOpacity
+                    key={f}
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor:
+                          active
+                            ? colors.primary +
+                              '20'
+                            : colors.surface,
+                        borderColor:
+                          active
+                            ? colors.primary
+                            : colors.border,
+                      },
+                    ]}
+                    onPress={() =>
+                      setKhataFilter(
+                        f as any
+                      )
+                    }
+                  >
+                    <Text
+                      style={{
+                        color:
+                          active
+                            ? colors.primary
+                            : colors.textMuted,
+                        fontWeight:
+                          '800',
+                      }}
+                    >
+                      {f}
+                    </Text>
                   </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* CREATE LEDGER */}
+            {showNewLedger && (
+              <GlassCard
+                style={
+                  styles.formCard
+                }
+              >
+                <View
+                  style={
+                    styles.formHeader
+                  }
+                >
+                  <Sparkles
+                    size={18}
+                    color={
+                      colors.primary
+                    }
+                  />
+
+                  <Text
+                    style={[
+                      styles.formTitle,
+                      {
+                        color:
+                          colors.text,
+                      },
+                    ]}
+                  >
+                    Create Ledger
+                  </Text>
                 </View>
 
                 <TextInput
                   placeholder="Student Name"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newCustomerName}
-                  onChangeText={setNewCustomerName}
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  value={
+                    customerName
+                  }
+                  onChangeText={
+                    setCustomerName
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                      backgroundColor:
+                        colors.surface,
+                    },
+                  ]}
                 />
 
                 <TextInput
-                  placeholder="Hostel / Room (e.g. PG Block 3 - Room 10)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newCustomerHostel}
-                  onChangeText={setNewCustomerHostel}
+                  placeholder="Hostel / PG"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  value={
+                    customerHostel
+                  }
+                  onChangeText={
+                    setCustomerHostel
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                      backgroundColor:
+                        colors.surface,
+                    },
+                  ]}
                 />
 
-                <View style={{ marginBottom: 12 }}>
-                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Credit Limit Ceiling (₹)</Text>
-                  <TextInput
-                    placeholder="e.g. 3000"
-                    placeholderTextColor={colors.textMuted}
-                    style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                    value={newCustomerLimit}
-                    onChangeText={setNewCustomerLimit}
-                    keyboardType="numeric"
-                  />
-                </View>
+                <TextInput
+                  placeholder="Credit Limit"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  keyboardType="numeric"
+                  value={
+                    creditLimit
+                  }
+                  onChangeText={
+                    setCreditLimit
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                      backgroundColor:
+                        colors.surface,
+                    },
+                  ]}
+                />
 
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-                  onPress={handleAddNewCustomer}
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor:
+                        colors.primary,
+                    },
+                  ]}
+                  onPress={
+                    createLedger
+                  }
                 >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Open Ledger Account</Text>
+                  <Text
+                    style={
+                      styles.submitTxt
+                    }
+                  >
+                    Open Ledger
+                  </Text>
                 </TouchableOpacity>
               </GlassCard>
             )}
 
-            {/* Settle repayment workspace card */}
+            {/* SETTLE */}
             {settlingRecord && (
-              <GlassCard style={styles.posPanel}>
-                <View style={styles.formHeaderRow}>
-                  <QrCode size={18} color={colors.primary} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>Settle Dues: {settlingRecord.studentName}</Text>
-                  <TouchableOpacity onPress={() => setSettlingRecord(null)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Cancel</Text>
-                  </TouchableOpacity>
+              <GlassCard
+                style={
+                  styles.formCard
+                }
+              >
+                <View
+                  style={
+                    styles.formHeader
+                  }
+                >
+                  <QrCode
+                    size={18}
+                    color={
+                      colors.primary
+                    }
+                  />
+
+                  <Text
+                    style={[
+                      styles.formTitle,
+                      {
+                        color:
+                          colors.text,
+                      },
+                    ]}
+                  >
+                    Settle Due
+                  </Text>
                 </View>
 
-                <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
-                  Total Dues outstanding: <Text style={{ color: colors.error, fontWeight: '800' }}>₹{settlingRecord.amountDue}</Text>
+                <Text
+                  style={{
+                    color:
+                      colors.textMuted,
+                    marginBottom: 12,
+                  }}
+                >
+                  Pending:
+                  ₹
+                  {
+                    settlingRecord.amountDue
+                  }
                 </Text>
 
                 <TextInput
-                  placeholder="Enter repayment amount (₹)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={settleAmount}
-                  onChangeText={setSettleAmount}
+                  placeholder="Repayment Amount"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
                   keyboardType="numeric"
+                  value={
+                    settleAmount
+                  }
+                  onChangeText={
+                    setSettleAmount
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                      backgroundColor:
+                        colors.surface,
+                    },
+                  ]}
                 />
 
-                <View style={styles.methodChoiceRow}>
-                  {['UPI', 'Cash'].map(m => (
-                    <TouchableOpacity
-                      key={m}
-                      style={[
-                        styles.methodChip,
-                        { backgroundColor: colors.surface, borderColor: colors.border },
-                        settleMethod === m && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
-                      ]}
-                      onPress={() => {
-                        setSettleMethod(m as any);
-                        setQrGenerated(false);
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, color: settleMethod === m ? colors.primary : colors.textMuted }}>{m}</Text>
-                    </TouchableOpacity>
-                  ))}
+                <View
+                  style={
+                    styles.methodRow
+                  }
+                >
+                  {[
+                    'UPI',
+                    'Cash',
+                  ].map((m) => {
+                    const active =
+                      paymentMethod ===
+                      m;
+
+                    return (
+                      <TouchableOpacity
+                        key={m}
+                        style={[
+                          styles.methodChip,
+                          {
+                            backgroundColor:
+                              active
+                                ? colors.primary +
+                                  '20'
+                                : colors.surface,
+                            borderColor:
+                              active
+                                ? colors.primary
+                                : colors.border,
+                          },
+                        ]}
+                        onPress={() =>
+                          setPaymentMethod(
+                            m as any
+                          )
+                        }
+                      >
+                        <Text
+                          style={{
+                            color:
+                              active
+                                ? colors.primary
+                                : colors.textMuted,
+                            fontWeight:
+                              '800',
+                          }}
+                        >
+                          {m}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
-                {settleMethod === 'UPI' && (
-                  <View style={{ marginBottom: 12 }}>
-                    {!qrGenerated ? (
-                      <TouchableOpacity 
-                        style={[styles.subActionBtn, { backgroundColor: colors.surfaceLight }]}
-                        onPress={() => setQrGenerated(true)}
+                {paymentMethod ===
+                  'UPI' && (
+                  <>
+                    {!showQr ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.qrBtn,
+                          {
+                            backgroundColor:
+                              colors.surface,
+                          },
+                        ]}
+                        onPress={() =>
+                          setShowQr(
+                            true
+                          )
+                        }
                       >
-                        <QrCode size={14} color={colors.text} style={{ marginRight: 4 }} />
-                        <Text style={{ color: colors.text, fontSize: 11, fontWeight: '800' }}>Generate Dynamic UPI QR Code</Text>
+                        <QrCode
+                          size={
+                            16
+                          }
+                          color={
+                            colors.text
+                          }
+                        />
+
+                        <Text
+                          style={{
+                            color:
+                              colors.text,
+                            marginLeft: 6,
+                            fontWeight:
+                              '700',
+                          }}
+                        >
+                          Generate QR
+                        </Text>
                       </TouchableOpacity>
                     ) : (
-                      <View style={styles.qrSandbox}>
-                        <View style={[styles.qrMockPlaceholder, { borderColor: colors.border }]}>
-                          <QrCode size={70} color={colors.text} />
-                        </View>
-                        <Text style={{ fontSize: 9, color: colors.textMuted, marginTop: 4 }}>Dynamic QR code for ₹{settleAmount || '0'} generated</Text>
+                      <View
+                        style={
+                          styles.qrBox
+                        }
+                      >
+                        <QrCode
+                          size={
+                            72
+                          }
+                          color={
+                            colors.text
+                          }
+                        />
                       </View>
                     )}
-                  </View>
+                  </>
                 )}
 
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.success }]}
-                  onPress={handleRecordRepayment}
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor:
+                        colors.success,
+                      marginTop: 12,
+                    },
+                  ]}
+                  onPress={
+                    settlePayment
+                  }
                 >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Finalize Repayment Ledger</Text>
+                  <Text
+                    style={
+                      styles.submitTxt
+                    }
+                  >
+                    Finalize Payment
+                  </Text>
                 </TouchableOpacity>
               </GlassCard>
             )}
 
-            {/* Add dues modal workspace card */}
+            {/* ADD DUE */}
             {addDueCustomer && (
-              <GlassCard style={styles.posPanel}>
-                <View style={styles.formHeaderRow}>
-                  <ArrowUpRight size={18} color={colors.error} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>Add Dues Entry: {addDueCustomer.studentName}</Text>
-                  <TouchableOpacity onPress={() => setAddDueCustomer(null)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Cancel</Text>
-                  </TouchableOpacity>
+              <GlassCard
+                style={
+                  styles.formCard
+                }
+              >
+                <View
+                  style={
+                    styles.formHeader
+                  }
+                >
+                  <Receipt
+                    size={18}
+                    color={
+                      colors.error
+                    }
+                  />
+
+                  <Text
+                    style={[
+                      styles.formTitle,
+                      {
+                        color:
+                          colors.text,
+                      },
+                    ]}
+                  >
+                    Add Due Entry
+                  </Text>
                 </View>
 
                 <TextInput
-                  placeholder="Purchase Value / Due Amount (₹)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={dueAmountInput}
-                  onChangeText={setDueAmountInput}
+                  placeholder="Due Amount"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
                   keyboardType="numeric"
+                  value={dueAmount}
+                  onChangeText={
+                    setDueAmount
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                      backgroundColor:
+                        colors.surface,
+                    },
+                  ]}
                 />
 
                 <TextInput
-                  placeholder="Remarks (e.g. Maggie packets, milk soap)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={dueRemarks}
-                  onChangeText={setDueRemarks}
+                  placeholder="Remarks"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  value={
+                    dueRemarks
+                  }
+                  onChangeText={
+                    setDueRemarks
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                      backgroundColor:
+                        colors.surface,
+                    },
+                  ]}
                 />
 
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.error }]}
-                  onPress={handleAddDues}
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor:
+                        colors.error,
+                    },
+                  ]}
+                  onPress={
+                    addDue
+                  }
                 >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Log Outstanding Dues</Text>
+                  <Text
+                    style={
+                      styles.submitTxt
+                    }
+                  >
+                    Log Due
+                  </Text>
                 </TouchableOpacity>
               </GlassCard>
             )}
 
-            {/* List */}
-            {filteredKhata.map(rec => (
-              <GlassCard key={rec.id} style={styles.khataCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={[styles.khataAvatar, { backgroundColor: colors.surface }]}>
-                    <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 16 }}>{rec.studentName[0]}</Text>
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={[styles.studentName, { color: colors.text }]}>{rec.studentName}</Text>
-                    <Text style={[styles.hostelText, { color: colors.textMuted }]}>{rec.hostel}</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: rec.status === 'Approved' ? colors.success + '20' : colors.error + '20' }]}>
-                    <Text style={{ fontSize: 9, color: rec.status === 'Approved' ? colors.success : colors.error, fontWeight: '900' }}>
-                      {rec.status.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Ledger metrics */}
-                <View style={[styles.khataDetailsRow, { borderTopColor: colors.border }]}>
-                  <View>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>OUTSTANDING DUES</Text>
-                    <Text style={[
-                      styles.dueValue, 
-                      { color: rec.amountDue > 0 ? colors.error : colors.text },
-                      rec.amountDue >= rec.creditLimit && { color: colors.error, fontWeight: '900' }
-                    ]}>
-                      ₹{rec.amountDue}
-                    </Text>
-                  </View>
-
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>CREDIT CEILING LIMIT</Text>
-                    <Text style={[styles.limitValue, { color: colors.text }]}>₹{rec.creditLimit}</Text>
-                  </View>
-                </View>
-
-                {/* Bottom Actions */}
-                <View style={[styles.khataActionsRow, { borderTopColor: colors.border }]}>
-                  <TouchableOpacity 
-                    style={[styles.actionBtn, { backgroundColor: colors.error + '12' }]}
-                    onPress={() => setAddDueCustomer(rec)}
+            {/* KHATA LIST */}
+            {loading ? (
+              <ActivityIndicator
+                size="large"
+                color={
+                  colors.primary
+                }
+                style={{
+                  marginTop: 40,
+                }}
+              />
+            ) : (
+              filteredKhata.map(
+                (rec) => (
+                  <GlassCard
+                    key={rec.id}
+                    style={
+                      styles.khataCard
+                    }
                   >
-                    <ArrowUpRight size={13} color={colors.error} style={{ marginRight: 4 }} />
-                    <Text style={{ color: colors.error, fontSize: 11, fontWeight: '700' }}>Log Purchase</Text>
-                  </TouchableOpacity>
+                    <View
+                      style={
+                        styles.khataTop
+                      }
+                    >
+                      <View
+                        style={[
+                          styles.avatar,
+                          {
+                            backgroundColor:
+                              colors.surface,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color:
+                              colors.primary,
+                            fontWeight:
+                              '900',
+                          }}
+                        >
+                          {rec.studentName[0]}
+                        </Text>
+                      </View>
 
-                  <TouchableOpacity 
-                    style={[styles.actionBtn, { backgroundColor: colors.success + '12' }]}
-                    onPress={() => setSettlingRecord(rec)}
-                  >
-                    <ArrowDownLeft size={13} color={colors.success} style={{ marginRight: 4 }} />
-                    <Text style={{ color: colors.success, fontSize: 11, fontWeight: '700' }}>Repay/Settle</Text>
-                  </TouchableOpacity>
+                      <View
+                        style={{
+                          flex: 1,
+                          marginLeft: 12,
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.khataName,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          {
+                            rec.studentName
+                          }
+                        </Text>
 
-                  <TouchableOpacity 
-                    style={[styles.circleActionBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Share.share({ message: `Hi ${rec.studentName}, your outstanding Kirana Khata balance is ₹${rec.amountDue}. Please clear outstanding bills when possible!` })}
-                  >
-                    <Share2 size={13} color={colors.text} />
-                  </TouchableOpacity>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
+                        <Text
+                          style={{
+                            color:
+                              colors.textMuted,
+                            fontSize: 11,
+                          }}
+                        >
+                          {
+                            rec.hostel
+                          }
+                        </Text>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.badge,
+                          {
+                            backgroundColor:
+                              rec.status ===
+                              'Approved'
+                                ? colors.success +
+                                  '20'
+                                : colors.error +
+                                  '20',
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color:
+                              rec.status ===
+                              'Approved'
+                                ? colors.success
+                                : colors.error,
+                            fontWeight:
+                              '900',
+                            fontSize: 9,
+                          }}
+                        >
+                          {
+                            rec.status
+                          }
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.khataInfo,
+                        {
+                          borderTopColor:
+                            colors.border,
+                        },
+                      ]}
+                    >
+                      <View>
+                        <Text
+                          style={
+                            styles.infoLabel
+                          }
+                        >
+                          DUES
+                        </Text>
+
+                        <Text
+                          style={[
+                            styles.infoValue,
+                            {
+                              color:
+                                rec.amountDue >
+                                0
+                                  ? colors.error
+                                  : colors.text,
+                            },
+                          ]}
+                        >
+                          ₹
+                          {
+                            rec.amountDue
+                          }
+                        </Text>
+                      </View>
+
+                      <View
+                        style={{
+                          alignItems:
+                            'flex-end',
+                        }}
+                      >
+                        <Text
+                          style={
+                            styles.infoLabel
+                          }
+                        >
+                          LIMIT
+                        </Text>
+
+                        <Text
+                          style={[
+                            styles.infoValue,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          ₹
+                          {
+                            rec.creditLimit
+                          }
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.actionRow,
+                        {
+                          borderTopColor:
+                            colors.border,
+                        },
+                      ]}
+                    >
+                      <TouchableOpacity
+                        style={[
+                          styles.actionBtn,
+                          {
+                            backgroundColor:
+                              colors.error +
+                              '15',
+                          },
+                        ]}
+                        onPress={() =>
+                          setAddDueCustomer(
+                            rec
+                          )
+                        }
+                      >
+                        <ArrowUpRight
+                          size={14}
+                          color={
+                            colors.error
+                          }
+                        />
+
+                        <Text
+                          style={{
+                            color:
+                              colors.error,
+                            marginLeft: 5,
+                            fontWeight:
+                              '800',
+                            fontSize: 11,
+                          }}
+                        >
+                          Add Due
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.actionBtn,
+                          {
+                            backgroundColor:
+                              colors.success +
+                              '15',
+                          },
+                        ]}
+                        onPress={() =>
+                          setSettlingRecord(
+                            rec
+                          )
+                        }
+                      >
+                        <ArrowDownLeft
+                          size={14}
+                          color={
+                            colors.success
+                          }
+                        />
+
+                        <Text
+                          style={{
+                            color:
+                              colors.success,
+                            marginLeft: 5,
+                            fontWeight:
+                              '800',
+                            fontSize: 11,
+                          }}
+                        >
+                          Settle
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.iconBtn,
+                          {
+                            backgroundColor:
+                              colors.surface,
+                          },
+                        ]}
+                        onPress={() =>
+                          Share.share({
+                            message: `${rec.studentName} outstanding balance is ₹${rec.amountDue}`,
+                          })
+                        }
+                      >
+                        <Share2
+                          size={14}
+                          color={
+                            colors.text
+                          }
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </GlassCard>
+                )
+              )
+            )}
+          </>
         )}
 
-        {activeTab === 'inventory' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Fast-Stock & Low-Supply Alerts</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Track hot student demands. Products dropping below the minimum threshold trigger instant supply warnings.
-              </Text>
-            </View>
+        {/* INVENTORY */}
+        {activeTab ===
+          'inventory' && (
+          <>
+            {inventory.map(
+              (item) => {
+                const low =
+                  item.stock <=
+                  item.threshold;
 
-            {inventory.map(item => {
-              const isLow = item.stock <= item.threshold;
-              return (
-                <GlassCard key={item.id} style={styles.invCard}>
-                  <View style={styles.subCardHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.studentName, { color: colors.text }]}>{item.itemName}</Text>
-                      <Text style={{ fontSize: 10, color: colors.textMuted }}>Category: {item.category}</Text>
-                    </View>
-                    
-                    {isLow && (
-                      <View style={[styles.statusBadge, { backgroundColor: colors.error + '20' }]}>
-                        <ShieldAlert size={12} color={colors.error} style={{ marginRight: 4 }} />
-                        <Text style={{ fontSize: 9, color: colors.error, fontWeight: '900' }}>LOW STOCK</Text>
+                return (
+                  <GlassCard
+                    key={item.id}
+                    style={
+                      styles.stockCard
+                    }
+                  >
+                    <View
+                      style={
+                        styles.khataTop
+                      }
+                    >
+                      <View
+                        style={{
+                          flex: 1,
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.khataName,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          {
+                            item.itemName
+                          }
+                        </Text>
+
+                        <Text
+                          style={{
+                            color:
+                              colors.textMuted,
+                            fontSize: 11,
+                          }}
+                        >
+                          {
+                            item.category
+                          }
+                        </Text>
                       </View>
-                    )}
-                  </View>
 
-                  <View style={[styles.stockStatusPanel, { borderTopColor: colors.border }]}>
-                    <View>
-                      <Text style={{ fontSize: 9, color: colors.textMuted }}>CURRENT SUPPLY</Text>
-                      <Text style={[
-                        styles.qtyDisplayTxt, 
-                        { color: colors.text },
-                        isLow && { color: colors.error, fontWeight: '900' }
-                      ]}>
-                        {item.stock} {item.unit}
+                      {low && (
+                        <View
+                          style={[
+                            styles.badge,
+                            {
+                              backgroundColor:
+                                colors.error +
+                                '20',
+                            },
+                          ]}
+                        >
+                          <AlertTriangle
+                            size={
+                              11
+                            }
+                            color={
+                              colors.error
+                            }
+                          />
+
+                          <Text
+                            style={{
+                              color:
+                                colors.error,
+                              marginLeft: 4,
+                              fontWeight:
+                                '900',
+                              fontSize: 9,
+                            }}
+                          >
+                            LOW
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <View
+                      style={[
+                        styles.khataInfo,
+                        {
+                          borderTopColor:
+                            colors.border,
+                        },
+                      ]}
+                    >
+                      <View>
+                        <Text
+                          style={
+                            styles.infoLabel
+                          }
+                        >
+                          STOCK
+                        </Text>
+
+                        <Text
+                          style={[
+                            styles.infoValue,
+                            {
+                              color:
+                                low
+                                  ? colors.error
+                                  : colors.text,
+                            },
+                          ]}
+                        >
+                          {
+                            item.stock
+                          }{' '}
+                          {
+                            item.unit
+                          }
+                        </Text>
+                      </View>
+
+                      <View>
+                        <Text
+                          style={
+                            styles.infoLabel
+                          }
+                        >
+                          THRESHOLD
+                        </Text>
+
+                        <Text
+                          style={[
+                            styles.infoValue,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          {
+                            item.threshold
+                          }
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.actionRow,
+                        {
+                          borderTopColor:
+                            colors.border,
+                        },
+                      ]}
+                    >
+                      {[5, 10, 20].map(
+                        (qty) => (
+                          <TouchableOpacity
+                            key={
+                              qty
+                            }
+                            style={[
+                              styles.smallBtn,
+                              {
+                                backgroundColor:
+                                  colors.primary,
+                              },
+                            ]}
+                            onPress={() =>
+                              restockItem(
+                                item.id,
+                                qty
+                              )
+                            }
+                          >
+                            <Text
+                              style={
+                                styles.smallBtnTxt
+                              }
+                            >
+                              +
+                              {
+                                qty
+                              }
+                            </Text>
+                          </TouchableOpacity>
+                        )
+                      )}
+                    </View>
+                  </GlassCard>
+                );
+              }
+            )}
+          </>
+        )}
+
+        {/* EXPIRY */}
+        {activeTab ===
+          'expiry' && (
+          <>
+            {expiryItems.map(
+              (item) => (
+                <GlassCard
+                  key={item.id}
+                  style={
+                    styles.stockCard
+                  }
+                >
+                  <View
+                    style={
+                      styles.khataTop
+                    }
+                  >
+                    <View
+                      style={{
+                        flex: 1,
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.khataName,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        {
+                          item.itemName
+                        }
+                      </Text>
+
+                      <Text
+                        style={{
+                          color:
+                            colors.textMuted,
+                          fontSize: 11,
+                        }}
+                      >
+                        Original:
+                        ₹
+                        {
+                          item.originalPrice
+                        }
                       </Text>
                     </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ fontSize: 9, color: colors.textMuted }}>MINIMUM THRESHOLD</Text>
-                      <Text style={[styles.qtyDisplayTxt, { color: colors.text }]}>{item.threshold} {item.unit}</Text>
+
+                    <View
+                      style={[
+                        styles.badge,
+                        {
+                          backgroundColor:
+                            colors.error +
+                            '20',
+                        },
+                      ]}
+                    >
+                      <Clock3
+                        size={11}
+                        color={
+                          colors.error
+                        }
+                      />
+
+                      <Text
+                        style={{
+                          color:
+                            colors.error,
+                          marginLeft: 4,
+                          fontWeight:
+                            '900',
+                          fontSize: 9,
+                        }}
+                      >
+                        {
+                          item.daysLeft
+                        }
+                        D
+                      </Text>
                     </View>
                   </View>
 
-                  <View style={[styles.restockArea, { borderTopColor: colors.border }]}>
-                    <Text style={{ fontSize: 10, color: colors.textMuted }}>Quick Restock:</Text>
-                    <View style={styles.flexRow}>
-                      <TouchableOpacity style={[styles.restockBtn, { backgroundColor: colors.primary }]} onPress={() => restockItem(item.id, 5)}>
-                        <Text style={styles.restockBtnTxt}>+5</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.restockBtn, { backgroundColor: colors.primary, marginLeft: 6 }]} onPress={() => restockItem(item.id, 10)}>
-                        <Text style={styles.restockBtnTxt}>+10</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.restockBtn, { backgroundColor: colors.primary, marginLeft: 6 }]} onPress={() => restockItem(item.id, 20)}>
-                        <Text style={styles.restockBtnTxt}>+20</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </GlassCard>
-              );
-            })}
-          </View>
-        )}
-
-        {activeTab === 'expiry' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Expiry clearance sale journal</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Track food products approaching expiry dates. Broadcast discounted clearance prices to student groups to clean shelves quickly.
-              </Text>
-            </View>
-
-            {expiringItems.map(item => (
-              <GlassCard key={item.id} style={styles.expiryCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentName, { color: colors.text }]}>{item.itemName}</Text>
-                    <Text style={{ fontSize: 10, color: colors.textMuted }}>Original Retail: ₹{item.originalPrice}</Text>
-                  </View>
-                  
-                  <View style={[styles.daysLeftBadge, { backgroundColor: item.daysLeft <= 2 ? colors.error + '20' : colors.accent + '20' }]}>
-                    <Clock size={12} color={item.daysLeft <= 2 ? colors.error : colors.accent} style={{ marginRight: 4 }} />
-                    <Text style={{ fontSize: 9, color: item.daysLeft <= 2 ? colors.error : colors.accent, fontWeight: '900' }}>
-                      {item.daysLeft} DAYS LEFT
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Expiry detail metrics */}
-                <View style={[styles.expiryPricingRow, { borderTopColor: colors.border }]}>
-                  <View>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>CLEARANCE OFFER</Text>
-                    <Text style={[styles.discountValue, { color: colors.primary }]}>{item.discount}% DISCOUNT</Text>
-                  </View>
-
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>CLEARANCE SALE PRICE</Text>
-                    <Text style={[styles.qtyDisplayTxt, { color: colors.text }]}>₹{Math.round(item.originalPrice * (1 - item.discount / 100))}</Text>
-                  </View>
-                </View>
-
-                {/* Broadcast actions */}
-                <View style={[styles.broadcastActionArea, { borderTopColor: colors.border }]}>
-                  <TouchableOpacity 
+                  <View
                     style={[
-                      styles.clearanceTriggerBtn, 
-                      item.activeSale ? { backgroundColor: colors.success + '20', borderColor: colors.success } : { backgroundColor: colors.primary }
+                      styles.khataInfo,
+                      {
+                        borderTopColor:
+                          colors.border,
+                      },
                     ]}
-                    onPress={() => toggleClearanceSale(item.id)}
+                  >
+                    <View>
+                      <Text
+                        style={
+                          styles.infoLabel
+                        }
+                      >
+                        DISCOUNT
+                      </Text>
+
+                      <Text
+                        style={[
+                          styles.infoValue,
+                          {
+                            color:
+                              colors.primary,
+                          },
+                        ]}
+                      >
+                        {
+                          item.discount
+                        }
+                        %
+                      </Text>
+                    </View>
+
+                    <View>
+                      <Text
+                        style={
+                          styles.infoLabel
+                        }
+                      >
+                        SALE PRICE
+                      </Text>
+
+                      <Text
+                        style={[
+                          styles.infoValue,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        ₹
+                        {Math.round(
+                          item.originalPrice *
+                            (1 -
+                              item.discount /
+                                100)
+                        )}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.broadcastBtn,
+                      {
+                        backgroundColor:
+                          item.activeSale
+                            ? colors.success +
+                              '20'
+                            : colors.primary,
+                        borderColor:
+                          item.activeSale
+                            ? colors.success
+                            : 'transparent',
+                      },
+                    ]}
                   >
                     {item.activeSale ? (
-                      <View style={styles.flexRow}>
-                        <CheckCircle2 size={13} color={colors.success} style={{ marginRight: 4 }} />
-                        <Text style={{ color: colors.success, fontSize: 11, fontWeight: '800' }}>Broadcast active on student Feed</Text>
+                      <View
+                        style={
+                          styles.centerRow
+                        }
+                      >
+                        <CheckCircle2
+                          size={14}
+                          color={
+                            colors.success
+                          }
+                        />
+
+                        <Text
+                          style={{
+                            color:
+                              colors.success,
+                            marginLeft: 6,
+                            fontWeight:
+                              '900',
+                          }}
+                        >
+                          Broadcast
+                          Active
+                        </Text>
                       </View>
                     ) : (
-                      <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>Activate 48h clearance broadcast</Text>
+                      <Text
+                        style={{
+                          color:
+                            '#FFF',
+                          fontWeight:
+                            '900',
+                        }}
+                      >
+                        Activate
+                        Clearance
+                      </Text>
                     )}
                   </TouchableOpacity>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
+                </GlassCard>
+              )
+            )}
+          </>
         )}
 
-        <View style={{ height: 100 }} />
+        <View
+          style={{
+            height: 120,
+          }}
+        />
       </ScrollView>
 
-      {/* Floating Bottom Navigation */}
-      <View style={[
-        styles.bottomTabBar, 
-        { 
-          backgroundColor: colors.surface + 'E8', 
-          borderColor: colors.border,
-          shadowColor: colors.primary,
-        }
-      ]}>
+      {/* BOTTOM NAV */}
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            backgroundColor:
+              colors.surface +
+              'E8',
+            borderColor:
+              colors.border,
+          },
+        ]}
+      >
         {[
-            { id: 'khata', label: 'Khata Ledger', icon: UserPlus },
-            { id: 'inventory', label: 'Stock Alerts', icon: ShoppingBag },
-            { id: 'expiry', label: 'Expiry clearance', icon: Percent },
-          ].map(tab => {
-          const isActive = activeTab === tab.id;
+          {
+            id: 'khata',
+            label: 'Khata',
+            icon: UserPlus,
+          },
+          {
+            id: 'inventory',
+            label: 'Stock',
+            icon: ShoppingBag,
+          },
+          {
+            id: 'expiry',
+            label: 'Expiry',
+            icon: Percent,
+          },
+        ].map((tab) => {
           const Icon = tab.icon;
+
+          const active =
+            activeTab === tab.id;
+
           return (
             <TouchableOpacity
               key={tab.id}
-              style={[styles.bottomTabBtn, isActive && { backgroundColor: colors.primary + '18' }]}
-              onPress={() => setActiveTab(tab.id as any)}
+              style={[
+                styles.bottomBtn,
+                active && {
+                  backgroundColor:
+                    colors.primary +
+                    '20',
+                },
+              ]}
+              onPress={() =>
+                setActiveTab(
+                  tab.id as any
+                )
+              }
             >
-              <View style={[styles.bottomTabIndicator, isActive && { backgroundColor: colors.primary }]} />
-              <Icon size={20} color={isActive ? colors.primary : colors.textMuted} />
-              <Text style={[styles.bottomTabLabel, { color: isActive ? colors.primary : colors.textMuted }]}>
-                {tab.label.trim()}
+              <Icon
+                size={20}
+                color={
+                  active
+                    ? colors.primary
+                    : colors.textMuted
+                }
+              />
+
+              <Text
+                style={{
+                  color: active
+                    ? colors.primary
+                    : colors.textMuted,
+                  fontSize: 10,
+                  fontWeight: '900',
+                }}
+              >
+                {tab.label}
               </Text>
             </TouchableOpacity>
           );
@@ -777,358 +2087,317 @@ function KiranaManagerScreenMerchant() {
       </View>
     </View>
   );
-
 }
 
-
-const styles: any = StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 8,
   },
-  tabBarContainer: {
-    height: 48,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-  },
-  tabsScroll: {
-    paddingHorizontal: Spacing.md,
-    alignItems: 'center',
-    gap: 8,
-  },
-  tabBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  tabIcon: {
-    marginRight: 4,
-  },
-  tabLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
+
   scrollContent: {
     padding: Spacing.md,
   },
-  introHeader: {
+
+  hudCard: {
+    padding: 20,
+    borderRadius: 24,
+    marginBottom: 20,
+  },
+
+  hudTop: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+    alignItems: 'center',
+  },
+
+  hudMini: {
+    color:
+      'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+
+  hudAmount: {
+    color: '#FFF',
+    fontSize: 28,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+
+  hudDivider: {
+    height: 1,
+    backgroundColor:
+      'rgba(255,255,255,0.15)',
+    marginVertical: 16,
+  },
+
+  analyticsRow: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+  },
+
+  analyticsValue: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+
+  analyticsLabel: {
+    color:
+      'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    marginTop: 2,
+  },
+
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+    alignItems: 'center',
     marginBottom: 16,
   },
-  introTitle: {
-    fontSize: 18,
-    fontWeight: '800',
+
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '900',
   },
-  introSub: {
-    fontSize: 12,
-    marginTop: 4,
-    lineHeight: 16,
+
+  addBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  searchRow: {
-    flexDirection: 'row',
-    marginBottom: 12,
-    gap: 8,
-  },
+
   searchBar: {
-    flex: 1,
+    height: 46,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
+    gap: 8,
+    marginBottom: 14,
   },
+
   searchInput: {
     flex: 1,
     fontSize: 13,
   },
-  addBtn: {
-    width: 44,
-    height: 44,
+
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+
+  formCard: {
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 16,
+  },
+
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+
+  formTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    marginLeft: 8,
+  },
+
+  formInput: {
+    height: 46,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+
+  submitBtn: {
+    height: 46,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 4,
   },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 16,
+
+  submitTxt: {
+    color: '#FFF',
+    fontWeight: '900',
   },
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  filterChipTxt: {
-    fontSize: 11,
-  },
-  modalFormCard: {
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-  },
-  formHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  formTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    flex: 1,
-    marginLeft: 6,
-  },
-  formInput: {
-    height: 40,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    fontSize: 13,
-    marginBottom: 10,
-    backgroundColor: 'rgba(255,255,255,0.01)',
-  },
-  inputLabel: {
-    fontSize: 10,
-    marginBottom: 2,
-    fontWeight: '700',
-  },
-  submitBtn: {
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  posPanel: {
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-  },
-  methodChoiceRow: {
+
+  methodRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 12,
   },
+
   methodChip: {
     flex: 1,
-    height: 34,
+    height: 40,
     borderWidth: 1,
-    borderRadius: 6,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  subActionBtn: {
+
+  qrBtn: {
+    marginTop: 12,
+    height: 42,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
     flexDirection: 'row',
-    height: 32,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  qrSandbox: {
+
+  qrBox: {
+    marginTop: 16,
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
-  qrMockPlaceholder: {
-    width: 90,
-    height: 90,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+
   khataCard: {
-    padding: 14,
+    padding: 16,
+    borderRadius: 20,
     marginBottom: 12,
-    borderRadius: 16,
   },
-  subCardHeader: {
+
+  stockCard: {
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 12,
+  },
+
+  khataTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
   },
-  khataAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+
+  avatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  studentName: {
+
+  khataName: {
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '900',
   },
-  hostelText: {
-    fontSize: 11,
-    marginTop: 1,
-  },
-  statusBadge: {
+
+  badge: {
     flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    alignItems: 'center',
+    paddingVertical: 4,
+    borderRadius: 10,
   },
-  khataDetailsRow: {
+
+  khataInfo: {
     borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 4,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  dueValue: {
-    fontSize: 16,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  limitValue: {
-    fontSize: 13,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  khataActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 10,
-    gap: 6,
-  },
-  actionBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  circleActionBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  flexRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  invCard: {
-    padding: 14,
-    marginBottom: 12,
-    borderRadius: 16,
-  },
-  stockStatusPanel: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 4,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  qtyDisplayTxt: {
-    fontSize: 14,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  restockArea: {
-    borderTopWidth: 1,
+    marginTop: 12,
     paddingTop: 12,
-    marginTop: 10,
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent:
+      'space-between',
   },
-  restockBtn: {
-    width: 42,
-    height: 28,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  restockBtnTxt: {
-    color: '#FFF',
-    fontSize: 11,
+
+  infoLabel: {
+    fontSize: 9,
+    color: '#9CA3AF',
     fontWeight: '800',
   },
-  expiryCard: {
-    padding: 14,
-    marginBottom: 12,
-    borderRadius: 16,
-  },
-  daysLeftBadge: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  expiryPricingRow: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 4,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  discountValue: {
-    fontSize: 13,
+
+  infoValue: {
+    fontSize: 15,
     fontWeight: '900',
     marginTop: 2,
   },
-  broadcastActionArea: {
+
+  actionRow: {
     borderTopWidth: 1,
+    marginTop: 12,
     paddingTop: 12,
-    marginTop: 10,
+    flexDirection: 'row',
+    gap: 8,
   },
-  clearanceTriggerBtn: {
-    height: 34,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'transparent',
+
+  actionBtn: {
+    flex: 1,
+    height: 38,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  bottomTabBar: {
+
+  smallBtn: {
+    flex: 1,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  smallBtnTxt: {
+    color: '#FFF',
+    fontWeight: '900',
+  },
+
+  broadcastBtn: {
+    marginTop: 14,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  centerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  bottomBar: {
     position: 'absolute',
     bottom: 20,
     left: 16,
     right: 16,
-    height: 72,
-    borderRadius: 22,
+    height: 74,
+    borderRadius: 24,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 6,
-    elevation: 12,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
+    paddingHorizontal: 8,
   },
-  bottomTabBtn: {
+
+  bottomBtn: {
     flex: 1,
-    height: 56,
-    borderRadius: 16,
+    height: 58,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 3,
-  },
-  bottomTabIndicator: {
-    width: 16,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: 'transparent',
-    marginBottom: 2,
-  },
-  bottomTabLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: 0.2,
+    gap: 4,
   },
 });

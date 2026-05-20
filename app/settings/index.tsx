@@ -288,21 +288,21 @@ export default function SettingsScreen() {
                   "Select a profile mode for local development and testing:",
                   [
                     {
-                      text: "🎓 Student / Resident",
+                      text: "Student / Resident",
                       onPress: () => {
                         setUserRole('customer');
                         Alert.alert("Success", "Switched to Student/Resident view.");
                       }
                     },
                     {
-                      text: "🏪 Merchant Partner",
+                      text: "Merchant Partner",
                       onPress: () => {
                         setUserRole('merchant');
                         Alert.alert("Success", "Switched to Merchant Partner view.");
                       }
                     },
                     {
-                      text: "🛡️ System Administrator",
+                      text: "System Administrator",
                       onPress: () => {
                         setUserRole('admin');
                         Alert.alert("Success", "Switched to System Administrator view.");
@@ -584,9 +584,27 @@ export default function SettingsScreen() {
         </View>
 
         {/* Delete Account */}
-        <TouchableOpacity style={[styles.deleteBtn, { borderColor: colors.error + '25' }]} onPress={handleDeleteAccount} activeOpacity={0.7}>
+             <TouchableOpacity 
+          style={[
+            styles.deleteBtn, 
+            { 
+              backgroundColor: colors.error + '12', // Added 7% alpha background tint for theme-aware surface blending
+              borderColor: colors.error + '25' 
+            }
+          ]} 
+          onPress={handleDeleteAccount} 
+          activeOpacity={0.7}
+        >
           <Trash2 size={18} color={colors.error} />
-          <Text style={styles.deleteText}>Delete Account Permanently</Text>
+          
+          <Text 
+            style={[
+              styles.deleteText, 
+              { color: colors.error } // FIX: Forces the typography color to match your dynamic theme error red
+            ]}
+          >
+            Delete Account Permanently
+          </Text>
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />
@@ -854,7 +872,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
-  deleteBtn: {
+    deleteBtn: {
+       width: '70%',
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

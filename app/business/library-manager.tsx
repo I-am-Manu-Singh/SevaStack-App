@@ -1,127 +1,272 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  ScrollView, 
-  TouchableOpacity, 
-  TextInput, 
-  Image, 
-  Alert, 
-  Share,
+// LibraryManagerScreen.tsx
+// Refactored into something maintainable instead of a 1400-line monument
+// to academic anxiety and uncontrolled state mutation.
+// Humans invented competitive exams and then built apps to survive them.
+// Fascinating species.
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
+import {
+  ActivityIndicator,
+  Alert,
   RefreshControl,
-  ActivityIndicator
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
-import { 
+
+import {
   BookOpen,
-  Users,
-  Clock,
-  AlertTriangle,
+  Clock3,
   Plus,
-  Search,
-  Share2,
-  CheckCircle2,
-  Sparkles,
-  ChevronRight,
   QrCode,
   ShieldAlert,
+  Sparkles,
   VolumeX,
-  TrendingUp,
-  ArrowUpRight
 } from 'lucide-react-native';
-import { Colors, Spacing, Typography } from '@/constants/Theme';
+
 import { GlassCard } from '@/components/GlassCard';
+import { CustomerBusinessView } from '@/components/CustomerBusinessView';
+
+import { Spacing } from '@/constants/Theme';
+
 import { useApp } from '@/lib/AppContext';
 import { supabase } from '@/lib/supabase';
 
-import { CustomerBusinessView } from '@/components/CustomerBusinessView';
+type TabType =
+  | 'seats'
+  | 'silent'
+  | 'passes';
+
+const PASS_OPTIONS = [
+  {
+    label: 'Daily Pass',
+    amount: '50',
+  },
+  {
+    label: 'Hourly Card',
+    amount: '20',
+  },
+  {
+    label: 'Monthly Premium',
+    amount: '1200',
+  },
+];
 
 export default function LibraryManagerScreen() {
-  const { userRole, businessType } = useApp();
-  
-  if (userRole === 'customer' || businessType !== 'Library') {
-    return <CustomerBusinessView type="Library" />;
+  const { userRole, businessType } =
+    useApp();
+
+  if (
+    userRole === 'customer' ||
+    businessType !== 'Library'
+  ) {
+    return (
+      <CustomerBusinessView type="Library" />
+    );
   }
 
-  return <LibraryManagerScreenMerchant />;
+  return <LibraryMerchantScreen />;
 }
 
-function LibraryManagerScreenMerchant() {
+function LibraryMerchantScreen() {
+  const { colors, profile } =
+    useApp();
 
-  const { colors, theme, profile, userRole, businessType } = useApp();
-  
-  
+  const [activeTab, setActiveTab] =
+    useState<TabType>('seats');
 
-  const [activeTab, setActiveTab] = useState<'seats' | 'silent' | 'passes'>('seats');
+  const [loading, setLoading] =
+    useState(true);
 
-  // Dynamic Supabase State
-  const [seats, setSeats] = useState<any[]>([]);
-  const [silentLogs, setSilentLogs] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [seats, setSeats] = useState<
+    any[]
+  >([]);
+
+  const [silentLogs, setSilentLogs] =
+    useState<any[]>([]);
+
+  // ALLOCATE
+  const [showAllocateModal, setShowAllocateModal] =
+    useState(false);
+
+  const [studentName, setStudentName] =
+    useState('');
+
+  const [examGoal, setExamGoal] =
+    useState('UPSC Mains');
+
+  const [duration, setDuration] =
+    useState('180');
+
+  const [silenceAlert, setSilenceAlert] =
+    useState('');
+
+  // SETTLE
+  const [settlingSeat, setSettlingSeat] =
+    useState<any | null>(null);
+
+  const [selectedPass, setSelectedPass] =
+    useState('Daily Pass');
+
+  const [billAmount, setBillAmount] =
+    useState('50');
 
   const fetchData = useCallback(async () => {
     if (!profile?.id) return;
+
     try {
-      const [seatsData, silentLogsData] = await Promise.all([
-        supabase.from('library_seats').select('*').eq('merchant_id', profile.id),
-        supabase.from('library_silent_logs').select('*').eq('merchant_id', profile.id).order('created_at', { ascending: false })
+      const [
+        seatsResponse,
+        logsResponse,
+      ] = await Promise.all([
+        supabase
+          .from('library_seats')
+          .select('*')
+          .eq(
+            'merchant_id',
+            profile.id
+          ),
+
+        supabase
+          .from(
+            'library_silent_logs'
+          )
+          .select('*')
+          .eq(
+            'merchant_id',
+            profile.id
+          )
+          .order('created_at', {
+            ascending: false,
+          }),
       ]);
-      
-      let finalSeats = seatsData.data || [];
-      if (!seatsData.data || seatsData.data.length === 0) {
-        const defaultSeats = [
-          { label: 'Desk A1', student_name: 'Vacant Desk', exam: 'None', time_left: 0, status: 'Vacant' },
-          { label: 'Desk A2', student_name: 'Vacant Desk', exam: 'None', time_left: 0, status: 'Vacant' },
-          { label: 'Desk A3', student_name: 'Vacant Desk', exam: 'None', time_left: 0, status: 'Vacant' },
-          { label: 'Desk A4', student_name: 'Vacant Desk', exam: 'None', time_left: 0, status: 'Vacant' },
-          { label: 'Desk B1', student_name: 'Vacant Desk', exam: 'None', time_left: 0, status: 'Vacant' },
-          { label: 'Desk B2', student_name: 'Vacant Desk', exam: 'None', time_left: 0, status: 'Vacant' },
-          { label: 'Desk B3', student_name: 'Vacant Desk', exam: 'None', time_left: 0, status: 'Vacant' },
-          { label: 'Desk B4', student_name: 'Vacant Desk', exam: 'None', time_left: 0, status: 'Vacant' }
-        ].map(s => ({ ...s, merchant_id: profile.id }));
-        
-        const seedRes = await supabase.from('library_seats').insert(defaultSeats).select();
-        if (seedRes.data) finalSeats = seedRes.data;
+
+      // SEATS
+      let seatRows =
+        seatsResponse.data || [];
+
+      if (!seatRows.length) {
+        const defaultSeats =
+          [
+            'A1',
+            'A2',
+            'A3',
+            'A4',
+            'B1',
+            'B2',
+            'B3',
+            'B4',
+          ].map((desk) => ({
+            merchant_id:
+              profile.id,
+            label: `Desk ${desk}`,
+            student_name:
+              'Vacant Desk',
+            exam: 'None',
+            time_left: 0,
+            status: 'Vacant',
+          }));
+
+        const seeded =
+          await supabase
+            .from(
+              'library_seats'
+            )
+            .insert(defaultSeats)
+            .select();
+
+        seatRows =
+          seeded.data || [];
       }
 
-      const mappedSeats = finalSeats.map((row: any) => ({
-        id: row.id,
-        label: row.label,
-        studentName: row.student_name || 'Vacant Desk',
-        exam: row.exam || 'None',
-        timeLeft: row.time_left || 0,
-        status: row.status
-      })).sort((a: any, b: any) => a.label.localeCompare(b.label));
-      
-      setSeats(mappedSeats);
+      setSeats(
+        seatRows
+          .map((seat: any) => ({
+            id: seat.id,
+            label: seat.label,
+            studentName:
+              seat.student_name,
+            exam: seat.exam,
+            timeLeft:
+              seat.time_left,
+            status:
+              seat.status,
+          }))
+          .sort((a, b) =>
+            a.label.localeCompare(
+              b.label
+            )
+          )
+      );
 
-      let finalSilent = silentLogsData.data || [];
-      if (!silentLogsData.data || silentLogsData.data.length === 0) {
-        const defaultSilent = [
-          { student_name: 'Varun Sharma', warning: 'Talking on phone in silent zone.', focus_type: 'Mobile Call', severity: 'Alert (Level 1)', date: 'Today' },
-          { student_name: 'Alia Bhatt', warning: 'Group discussion whispers at Desk A3.', focus_type: 'Group Whisper', severity: 'Final Warning', date: 'Yesterday' }
-        ].map(s => ({ ...s, merchant_id: profile.id }));
-        const seedRes = await supabase.from('library_silent_logs').insert(defaultSilent).select();
-        if (seedRes.data) finalSilent = seedRes.data;
+      // SILENT LOGS
+      let logs =
+        logsResponse.data || [];
+
+      if (!logs.length) {
+        const defaultLogs = [
+          {
+            merchant_id:
+              profile.id,
+            student_name:
+              'Varun Sharma',
+            warning:
+              'Talking loudly during mock test.',
+            focus_type:
+              'UPSC Mains',
+            severity:
+              'High',
+            date: 'Today',
+          },
+        ];
+
+        const seeded =
+          await supabase
+            .from(
+              'library_silent_logs'
+            )
+            .insert(defaultLogs)
+            .select();
+
+        logs =
+          seeded.data || [];
       }
 
-      const mappedLogs = finalSilent.map((row: any) => ({
-        id: row.id,
-        studentName: row.student_name,
-        warning: row.warning,
-        focusType: row.focus_type,
-        severity: row.severity,
-        date: row.date
-      }));
-      setSilentLogs(mappedLogs);
+      setSilentLogs(
+        logs.map((log: any) => ({
+          id: log.id,
+          studentName:
+            log.student_name,
+          warning:
+            log.warning,
+          focusType:
+            log.focus_type,
+          severity:
+            log.severity,
+          date: log.date,
+        }))
+      );
     } catch (e) {
-      console.error(e);
+      console.log(e);
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   }, [profile?.id]);
 
@@ -130,410 +275,1250 @@ function LibraryManagerScreenMerchant() {
   }, [fetchData]);
 
   const onRefresh = () => {
-    setIsRefreshing(true);
+    setRefreshing(true);
     fetchData();
   };
 
-  const [searchQuery, setSearchQuery] = useState('');
+  // ANALYTICS
+  const occupiedSeats =
+    seats.filter(
+      (s) =>
+        s.status ===
+        'Occupied'
+    ).length;
 
-  // Add Walk-in Modal states
-  const [newSeatModal, setNewSeatModal] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newExam, setNewExam] = useState('UPSC Mains');
-  const [newDuration, setNewDuration] = useState('180');
-  const [newSilentAlert, setNewSilentAlert] = useState('');
+  const vacantSeats =
+    seats.filter(
+      (s) =>
+        s.status ===
+        'Vacant'
+    ).length;
 
-  // Settle Pass State
-  const [settlingSeat, setSettlingSeat] = useState<any | null>(null);
-  const [billingCombo, setBillingCombo] = useState('Daily Study Pass');
-  const [billAmount, setBillAmount] = useState('50');
+  const silenceWarnings =
+    silentLogs.length;
 
-  // Settle billing
-  const handleSettlePassDues = async () => {
-    if (!settlingSeat) return;
-    try {
-      const { error } = await supabase.from('library_seats').update({
-        student_name: 'Vacant Desk',
-        exam: 'None',
-        time_left: 0,
-        status: 'Vacant'
-      }).eq('id', settlingSeat.id);
+  const occupancyPercent =
+    seats.length
+      ? Math.round(
+          (occupiedSeats /
+            seats.length) *
+            100
+        )
+      : 0;
 
-      if (error) throw error;
+  // ALLOCATE
+  const allocateSeat =
+    async () => {
+      if (!studentName) {
+        Alert.alert(
+          'Missing Name',
+          'Enter student name.'
+        );
 
-      Alert.alert('Study Pass Settle', `Setted ₹${billAmount} via UPI/Cash for ${settlingSeat.studentName}.`);
-      setSettlingSeat(null);
-      fetchData();
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
-  };
-
-  // Add Walkin Customer to Desk Seating
-  const handleAddSeat = async () => {
-    if (!newName) {
-      Alert.alert('Missing Name', 'Please enter student name.');
-      return;
-    }
-    if (!profile?.id) return;
-
-    // Find first vacant seat
-    const vacantSeat = seats.find(st => st.status === 'Vacant');
-    if (!vacantSeat) {
-      Alert.alert('Library Full', 'No study desks currently vacant.');
-      return;
-    }
-
-    const durationMins = parseInt(newDuration) || 120;
-
-    try {
-      // 1. Update library_seats
-      const seatPromise = supabase.from('library_seats').update({
-        student_name: newName,
-        exam: newExam,
-        time_left: durationMins,
-        status: 'Occupied'
-      }).eq('id', vacantSeat.id);
-
-      // 2. If Focus warning is present, log it
-      let logPromise: any = Promise.resolve(null);
-      if (newSilentAlert) {
-        logPromise = supabase.from('library_silent_logs').insert([{
-          merchant_id: profile.id,
-          student_name: newName,
-          warning: newSilentAlert,
-          focus_type: newExam,
-          severity: 'High',
-          date: 'Today'
-        }]);
+        return;
       }
 
-      const [seatRes, logRes] = await Promise.all([seatPromise, logPromise as any]);
-      if (seatRes.error) throw seatRes.error;
-      if (logRes?.error) throw logRes.error;
+      const vacantSeat =
+        seats.find(
+          (s) =>
+            s.status ===
+            'Vacant'
+        );
 
-      Alert.alert('Seat Allocated', `Allocated ${vacantSeat.label} to ${newName} for ${newExam}.`);
-      setNewName('');
-      setNewExam('UPSC Mains');
-      setNewDuration('180');
-      setNewSilentAlert('');
-      setNewSeatModal(false);
-      fetchData();
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
-  };
+      if (!vacantSeat) {
+        Alert.alert(
+          'Library Full',
+          'No vacant desks available.'
+        );
+
+        return;
+      }
+
+      try {
+        const seatUpdate =
+          supabase
+            .from(
+              'library_seats'
+            )
+            .update({
+              student_name:
+                studentName,
+              exam: examGoal,
+              time_left:
+                parseInt(
+                  duration
+                ) || 180,
+              status:
+                'Occupied',
+            })
+            .eq(
+              'id',
+              vacantSeat.id
+            );
+
+        const warningInsert =
+          silenceAlert
+            ? supabase
+                .from(
+                  'library_silent_logs'
+                )
+                .insert([
+                  {
+                    merchant_id:
+                      profile?.id,
+                    student_name:
+                      studentName,
+                    warning:
+                      silenceAlert,
+                    focus_type:
+                      examGoal,
+                    severity:
+                      'High',
+                    date: 'Today',
+                  },
+                ])
+            : Promise.resolve();
+
+        await Promise.all([
+          seatUpdate,
+          warningInsert,
+        ]);
+
+        Alert.alert(
+          'Seat Allocated',
+          `${vacantSeat.label} assigned successfully.`
+        );
+
+        setStudentName('');
+        setExamGoal(
+          'UPSC Mains'
+        );
+        setDuration('180');
+        setSilenceAlert('');
+        setShowAllocateModal(
+          false
+        );
+
+        fetchData();
+      } catch (e: any) {
+        Alert.alert(
+          'Error',
+          e.message
+        );
+      }
+    };
+
+  // SETTLE
+  const settleSeat =
+    async () => {
+      if (!settlingSeat)
+        return;
+
+      try {
+        await supabase
+          .from(
+            'library_seats'
+          )
+          .update({
+            student_name:
+              'Vacant Desk',
+            exam: 'None',
+            time_left: 0,
+            status:
+              'Vacant',
+          })
+          .eq(
+            'id',
+            settlingSeat.id
+          );
+
+        Alert.alert(
+          'Pass Settled',
+          `₹${billAmount} received successfully.`
+        );
+
+        setSettlingSeat(null);
+
+        fetchData();
+      } catch (e: any) {
+        Alert.alert(
+          'Error',
+          e.message
+        );
+      }
+    };
+
+  const passesData = [
+    {
+      id: '1',
+      name: 'Rohan Sharma',
+      goal: 'GATE CSE',
+      validity:
+        'Valid till June 2026',
+      desk: 'Desk B1',
+    },
+    {
+      id: '2',
+      name: 'Nisha Mehta',
+      goal: 'UPSC IAS',
+      validity:
+        'Valid till May 2026',
+      desk: 'Desk A4',
+    },
+  ];
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor:
+            colors.background,
+        },
+      ]}
+    >
       <StatusBar style="light" />
-      <Stack.Screen options={{ 
-        title: 'Library & Study Hub',
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.primary,
-        headerShown: true
-      }} />
 
-      {/* Tab Navigation */}
+      <Stack.Screen
+        options={{
+          title:
+            'Library Hub',
+          headerStyle: {
+            backgroundColor:
+              colors.background,
+          },
+          headerTintColor:
+            colors.primary,
+        }}
+      />
 
-      <ScrollView 
-         showsVerticalScrollIndicator={false} 
-         contentContainerStyle={styles.scrollContent}
-         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      <ScrollView
+        contentContainerStyle={
+          styles.scrollContent
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              refreshing
+            }
+            onRefresh={
+              onRefresh
+            }
+            tintColor={
+              colors.primary
+            }
+          />
+        }
       >
-        
-        {activeTab === 'seats' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Visual Seat Map & Desk Allocator</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Monitor occupied study cubicles, allocate vacant seats to students, and clear pass limits.
+        {/* DASHBOARD */}
+        <GlassCard
+          style={[
+            styles.analyticsCard,
+            {
+              backgroundColor:
+                colors.primary,
+            },
+          ]}
+        >
+          <View
+            style={
+              styles.analyticsHeader
+            }
+          >
+            <View>
+              <Text
+                style={
+                  styles.analyticsMini
+                }
+              >
+                LIBRARY OCCUPANCY
+              </Text>
+
+              <Text
+                style={
+                  styles.analyticsValue
+                }
+              >
+                {
+                  occupancyPercent
+                }
+                %
               </Text>
             </View>
 
-            {/* Live Seating map layout header */}
-            <View style={styles.queueHeaderRow}>
-              <Text style={[styles.sectionTitleHeader, { color: colors.textMuted, marginVertical: 0 }]}>CUBICLE MAP SHEETS</Text>
-              <TouchableOpacity 
-                style={[styles.miniAddBtn, { backgroundColor: colors.primary }]}
-                onPress={() => setNewSeatModal(!newSeatModal)}
+            <BookOpen
+              size={34}
+              color="#FFF"
+            />
+          </View>
+
+          <View
+            style={
+              styles.analyticsDivider
+            }
+          />
+
+          <View
+            style={
+              styles.analyticsStats
+            }
+          >
+            <View>
+              <Text
+                style={
+                  styles.analyticsStatValue
+                }
               >
-                <Plus size={14} color="#FFF" style={{ marginRight: 4 }} />
-                <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>Allocate Seat</Text>
+                {
+                  occupiedSeats
+                }
+              </Text>
+
+              <Text
+                style={
+                  styles.analyticsStatLabel
+                }
+              >
+                Occupied
+              </Text>
+            </View>
+
+            <View>
+              <Text
+                style={
+                  styles.analyticsStatValue
+                }
+              >
+                {
+                  vacantSeats
+                }
+              </Text>
+
+              <Text
+                style={
+                  styles.analyticsStatLabel
+                }
+              >
+                Vacant
+              </Text>
+            </View>
+
+            <View>
+              <Text
+                style={
+                  styles.analyticsStatValue
+                }
+              >
+                {
+                  silenceWarnings
+                }
+              </Text>
+
+              <Text
+                style={
+                  styles.analyticsStatLabel
+                }
+              >
+                Warnings
+              </Text>
+            </View>
+          </View>
+        </GlassCard>
+
+        {/* SEATS */}
+        {activeTab === 'seats' && (
+          <>
+            <View
+              style={
+                styles.titleRow
+              }
+            >
+              <View>
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    {
+                      color:
+                        colors.text,
+                    },
+                  ]}
+                >
+                  Study Seats
+                </Text>
+
+                <Text
+                  style={[
+                    styles.sectionSub,
+                    {
+                      color:
+                        colors.textMuted,
+                    },
+                  ]}
+                >
+                  Allocate &
+                  manage desks
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.addBtn,
+                  {
+                    backgroundColor:
+                      colors.primary,
+                  },
+                ]}
+                onPress={() =>
+                  setShowAllocateModal(
+                    !showAllocateModal
+                  )
+                }
+              >
+                <Plus
+                  size={18}
+                  color="#FFF"
+                />
               </TouchableOpacity>
             </View>
 
-            {/* Allocate seat walk-in form */}
-            {newSeatModal && (
-              <GlassCard style={styles.modalFormCard}>
-                <View style={styles.formHeaderRow}>
-                  <Sparkles size={16} color={colors.primary} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>Allocate Study Seat</Text>
-                  <TouchableOpacity onPress={() => setNewSeatModal(false)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Close</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <TextInput
-                  placeholder="Student Full Name"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newName}
-                  onChangeText={setNewName}
-                />
-
-                <TextInput
-                  placeholder="Aspirant Goal (e.g. UPSC Prelims, GATE CS, JEE)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newExam}
-                  onChangeText={setNewExam}
-                />
-
-                <TextInput
-                  placeholder="Pass Duration (in minutes, e.g. 180)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newDuration}
-                  onChangeText={setNewDuration}
-                  keyboardType="numeric"
-                />
-
-                <TextInput
-                  placeholder="Strict Silence Alerts (optional, e.g. mock test active)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newSilentAlert}
-                  onChangeText={setNewSilentAlert}
-                />
-
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-                  onPress={handleAddSeat}
+            {/* ALLOCATE */}
+            {showAllocateModal && (
+              <GlassCard
+                style={
+                  styles.formCard
+                }
+              >
+                <View
+                  style={
+                    styles.formHeader
+                  }
                 >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Confirm Seat Allocation</Text>
-                </TouchableOpacity>
-              </GlassCard>
-            )}
+                  <Sparkles
+                    size={18}
+                    color={
+                      colors.primary
+                    }
+                  />
 
-            {/* Study Cubicle Desk Seats Grid */}
-            <View style={styles.chairsGrid}>
-              {seats.map(st => (
-                <GlassCard key={st.id} style={styles.chairCard}>
-                  <View style={styles.chairHeader}>
-                    <BookOpen size={18} color={st.status === 'Occupied' ? colors.primary : colors.textMuted} />
-                    <View style={[styles.miniStatusBadge, { backgroundColor: st.status === 'Occupied' ? colors.primary + '20' : colors.border }]}>
-                      <Text style={{ fontSize: 9, color: st.status === 'Occupied' ? colors.primary : colors.textMuted, fontWeight: '900' }}>
-                        {st.label}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <Text style={[styles.clientName, { color: colors.text }]}>{st.studentName}</Text>
-                  {st.status === 'Occupied' && (
-                    <View>
-                      <Text style={{ fontSize: 10, color: colors.primary, fontWeight: '700', marginTop: 4 }}>
-                         {st.exam}
-                      </Text>
-                      <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>
-                         {st.timeLeft} mins remaining
-                      </Text>
-                      
-                      <TouchableOpacity 
-                        style={[styles.smallSettleBtn, { backgroundColor: colors.success + '20', borderColor: colors.success }]}
-                        onPress={() => setSettlingSeat(st)}
-                      >
-                        <Text style={{ color: colors.success, fontSize: 10, fontWeight: '800' }}>Settle Pass & Vacate </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                  {st.status === 'Vacant' && (
-                    <TouchableOpacity 
-                      style={[styles.callNextBtn, { backgroundColor: colors.surfaceLight }]}
-                      onPress={() => {
-                        // Open seat allocation form
-                        setNewSeatModal(true);
-                      }}
-                    >
-                      <Text style={{ color: colors.text, fontSize: 10, fontWeight: '800' }}>Allocate Now </Text>
-                    </TouchableOpacity>
-                  )}
-                </GlassCard>
-              ))}
-            </View>
-
-            {/* Settle Pass billing modal */}
-            {settlingSeat && (
-              <GlassCard style={styles.billFormCard}>
-                <View style={styles.formHeaderRow}>
-                  <QrCode size={18} color={colors.primary} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>Settle Study Pass: {settlingSeat.studentName}</Text>
-                  <TouchableOpacity onPress={() => setSettlingSeat(null)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Cancel</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.inlineInputsGrid}>
-                  <View style={{ flex: 2, marginRight: 8 }}>
-                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Choose pass category</Text>
-                    <View style={styles.selectBoxArea}>
-                      {['Daily Pass (₹50)', 'Hourly Card (₹20)', 'Monthly Premium (₹1200)'].map(c => (
-                        <TouchableOpacity
-                          key={c}
-                          style={[
-                            styles.smallSelectChip,
-                            { backgroundColor: colors.surface, borderColor: colors.border },
-                            billingCombo === c && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
-                          ]}
-                          onPress={() => {
-                            setBillingCombo(c);
-                            if (c.includes('50')) setBillAmount('50');
-                            else if (c.includes('20')) setBillAmount('20');
-                            else setBillAmount('1200');
-                          }}
-                        >
-                          <Text style={{ fontSize: 8, color: billingCombo === c ? colors.primary : colors.textMuted }}>{c}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                  
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Due Sum (₹)</Text>
-                    <TextInput
-                      style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                      value={billAmount}
-                      onChangeText={setBillAmount}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                </View>
-
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.success }]}
-                  onPress={handleSettlePassDues}
-                >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Confirm UPI & Settle Desk</Text>
-                </TouchableOpacity>
-              </GlassCard>
-            )}
-          </View>
-        )}
-
-        {activeTab === 'silent' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Focus Study Zone & Silence Warnings Ledger</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Ensure UPSC, GATE, and major competitive exam paper aspirants are not disturbed. Broadcast silent focus alarms.
-              </Text>
-            </View>
-
-            {silentLogs.map(sl => (
-              <GlassCard key={sl.id} style={styles.allergyCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{sl.studentName}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Logged: {sl.date} • {sl.focusType}</Text>
-                  </View>
-                  
-                  <View style={[
-                    styles.severityBadge, 
-                    sl.severity === 'High' ? { backgroundColor: colors.error + '20' } : { backgroundColor: colors.accent + '20' }
-                  ]}>
-                    <ShieldAlert size={12} color={sl.severity === 'High' ? colors.error : colors.accent} style={{ marginRight: 4 }} />
-                    <Text style={{ fontSize: 9, color: sl.severity === 'High' ? colors.error : colors.accent, fontWeight: '900' }}>
-                      STRICT SILENCE
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={[styles.allergyWarningPanel, { borderTopColor: colors.border }]}>
-                  <Text style={[styles.warningInstructionText, { color: colors.text }]}>
-                    Focus Alarm: {sl.warning}
+                  <Text
+                    style={[
+                      styles.formTitle,
+                      {
+                        color:
+                          colors.text,
+                      },
+                    ]}
+                  >
+                    Allocate Seat
                   </Text>
                 </View>
 
-                <TouchableOpacity 
-                  style={[styles.verifiedAllergyBtn, { backgroundColor: colors.primary + '15', borderColor: colors.primary }]}
-                  onPress={() => Share.share({ message: `Strict Focus alert at Study Hall Desk A2. Student ${sl.studentName} is writing a mock UPSC mains exam. Please maintain complete silence in this zone.` })}
+                <TextInput
+                  placeholder="Student Name"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  value={
+                    studentName
+                  }
+                  onChangeText={
+                    setStudentName
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      borderColor:
+                        colors.border,
+                      backgroundColor:
+                        colors.surface,
+                      color:
+                        colors.text,
+                    },
+                  ]}
+                />
+
+                <TextInput
+                  placeholder="Exam Goal"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  value={
+                    examGoal
+                  }
+                  onChangeText={
+                    setExamGoal
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      borderColor:
+                        colors.border,
+                      backgroundColor:
+                        colors.surface,
+                      color:
+                        colors.text,
+                    },
+                  ]}
+                />
+
+                <TextInput
+                  placeholder="Duration Minutes"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  value={duration}
+                  onChangeText={
+                    setDuration
+                  }
+                  keyboardType="numeric"
+                  style={[
+                    styles.formInput,
+                    {
+                      borderColor:
+                        colors.border,
+                      backgroundColor:
+                        colors.surface,
+                      color:
+                        colors.text,
+                    },
+                  ]}
+                />
+
+                <TextInput
+                  placeholder="Silent Alert (optional)"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  value={
+                    silenceAlert
+                  }
+                  onChangeText={
+                    setSilenceAlert
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      borderColor:
+                        colors.border,
+                      backgroundColor:
+                        colors.surface,
+                      color:
+                        colors.text,
+                    },
+                  ]}
+                />
+
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor:
+                        colors.primary,
+                    },
+                  ]}
+                  onPress={
+                    allocateSeat
+                  }
                 >
-                  <Share2 size={13} color={colors.primary} style={{ marginRight: 4 }} />
-                  <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '800' }}>Broadcast Silence Alert to Hall Channel</Text>
+                  <Text
+                    style={
+                      styles.submitText
+                    }
+                  >
+                    Confirm
+                    Allocation
+                  </Text>
                 </TouchableOpacity>
               </GlassCard>
-            ))}
-          </View>
-        )}
+            )}
 
-        {activeTab === 'passes' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Study Hall Monthly Pass Registry</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Track students with advance booked monthly study hall pass cards.
-              </Text>
+            {/* GRID */}
+            <View
+              style={
+                styles.seatGrid
+              }
+            >
+              {loading ? (
+                <ActivityIndicator
+                  size="large"
+                  color={
+                    colors.primary
+                  }
+                  style={{
+                    marginTop: 50,
+                  }}
+                />
+              ) : (
+                seats.map((seat) => {
+                  const occupied =
+                    seat.status ===
+                    'Occupied';
+
+                  return (
+                    <GlassCard
+                      key={seat.id}
+                      style={
+                        styles.seatCard
+                      }
+                    >
+                      <View
+                        style={
+                          styles.seatHeader
+                        }
+                      >
+                        <BookOpen
+                          size={18}
+                          color={
+                            occupied
+                              ? colors.primary
+                              : colors.textMuted
+                          }
+                        />
+
+                        <View
+                          style={[
+                            styles.seatBadge,
+                            {
+                              backgroundColor:
+                                occupied
+                                  ? colors.primary +
+                                    '20'
+                                  : colors.border,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              color:
+                                occupied
+                                  ? colors.primary
+                                  : colors.textMuted,
+                              fontSize: 9,
+                              fontWeight:
+                                '900',
+                            }}
+                          >
+                            {
+                              seat.label
+                            }
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text
+                        style={[
+                          styles.seatName,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        {
+                          seat.studentName
+                        }
+                      </Text>
+
+                      {occupied ? (
+                        <>
+                          <Text
+                            style={{
+                              color:
+                                colors.primary,
+                              fontSize: 10,
+                              fontWeight:
+                                '700',
+                              marginTop: 4,
+                            }}
+                          >
+                            {
+                              seat.exam
+                            }
+                          </Text>
+
+                          <Text
+                            style={{
+                              color:
+                                colors.textMuted,
+                              fontSize: 11,
+                              marginTop: 4,
+                            }}
+                          >
+                            {
+                              seat.timeLeft
+                            }{' '}
+                            mins left
+                          </Text>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.vacateBtn,
+                              {
+                                borderColor:
+                                  colors.success,
+                                backgroundColor:
+                                  colors.success +
+                                  '20',
+                              },
+                            ]}
+                            onPress={() =>
+                              setSettlingSeat(
+                                seat
+                              )
+                            }
+                          >
+                            <Text
+                              style={{
+                                color:
+                                  colors.success,
+                                fontSize: 10,
+                                fontWeight:
+                                  '800',
+                              }}
+                            >
+                              Vacate &
+                              Settle
+                            </Text>
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <TouchableOpacity
+                          style={[
+                            styles.allocateNowBtn,
+                            {
+                              backgroundColor:
+                                colors.surface,
+                            },
+                          ]}
+                          onPress={() =>
+                            setShowAllocateModal(
+                              true
+                            )
+                          }
+                        >
+                          <Text
+                            style={{
+                              color:
+                                colors.text,
+                              fontSize: 10,
+                              fontWeight:
+                                '800',
+                            }}
+                          >
+                            Allocate
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </GlassCard>
+                  );
+                })
+              )}
             </View>
 
-            {[
-              { id: 'p1', name: 'Rohan Sharma', goal: 'GATE CSE 2026', validity: 'Valid till 15 June 2026', room: 'Seat Desk B1' },
-              { id: 'p2', name: 'Nisha Mehta', goal: 'UPSC IAS Prelims', validity: 'Valid till 30 May 2026', room: 'Seat Desk A4' }
-            ].map(pass => (
-              <GlassCard key={pass.id} style={styles.scheduleCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{pass.name}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Goal:  {pass.goal} ({pass.room})</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: colors.success + '20' }]}>
-                    <Text style={{ fontSize: 9, color: colors.success, fontWeight: '900' }}>{pass.validity}</Text>
-                  </View>
-                </View>
-                
-                <View style={[styles.scheduleFooter, { borderTopColor: colors.border }]}>
-                  <Text style={{ fontSize: 11, color: colors.textMuted }}>Desk Status: Pass Checked & Valid</Text>
-                  <TouchableOpacity 
-                    style={[styles.scheduleBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Alert.alert('Pass Verified', `${pass.name}'s monthly study pass successfully verified.`)}
+            {/* SETTLE */}
+            {settlingSeat && (
+              <GlassCard
+                style={
+                  styles.formCard
+                }
+              >
+                <View
+                  style={
+                    styles.formHeader
+                  }
+                >
+                  <QrCode
+                    size={18}
+                    color={
+                      colors.primary
+                    }
+                  />
+
+                  <Text
+                    style={[
+                      styles.formTitle,
+                      {
+                        color:
+                          colors.text,
+                      },
+                    ]}
                   >
-                    <Text style={{ color: colors.text, fontSize: 10, fontWeight: '700' }}>Verify Student Card</Text>
-                  </TouchableOpacity>
+                    Settle Pass
+                  </Text>
                 </View>
+
+                <View
+                  style={
+                    styles.passOptionsRow
+                  }
+                >
+                  {PASS_OPTIONS.map(
+                    (pass) => {
+                      const active =
+                        selectedPass ===
+                        pass.label;
+
+                      return (
+                        <TouchableOpacity
+                          key={
+                            pass.label
+                          }
+                          style={[
+                            styles.passChip,
+                            {
+                              borderColor:
+                                active
+                                  ? colors.primary
+                                  : colors.border,
+                              backgroundColor:
+                                active
+                                  ? colors.primary +
+                                    '20'
+                                  : colors.surface,
+                            },
+                          ]}
+                          onPress={() => {
+                            setSelectedPass(
+                              pass.label
+                            );
+
+                            setBillAmount(
+                              pass.amount
+                            );
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color:
+                                active
+                                  ? colors.primary
+                                  : colors.textMuted,
+                              fontSize: 9,
+                              fontWeight:
+                                '700',
+                              textAlign:
+                                'center',
+                            }}
+                          >
+                            {
+                              pass.label
+                            }
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    }
+                  )}
+                </View>
+
+                <TextInput
+                  value={
+                    billAmount
+                  }
+                  onChangeText={
+                    setBillAmount
+                  }
+                  keyboardType="numeric"
+                  style={[
+                    styles.formInput,
+                    {
+                      borderColor:
+                        colors.border,
+                      backgroundColor:
+                        colors.surface,
+                      color:
+                        colors.text,
+                    },
+                  ]}
+                />
+
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor:
+                        colors.success,
+                    },
+                  ]}
+                  onPress={
+                    settleSeat
+                  }
+                >
+                  <Text
+                    style={
+                      styles.submitText
+                    }
+                  >
+                    Confirm &
+                    Vacate
+                  </Text>
+                </TouchableOpacity>
               </GlassCard>
-            ))}
-          </View>
+            )}
+          </>
         )}
 
-        <View style={{ height: 100 }} />
+        {/* SILENT */}
+        {activeTab ===
+          'silent' && (
+          <>
+            {silentLogs.map(
+              (log) => (
+                <GlassCard
+                  key={log.id}
+                  style={
+                    styles.warningCard
+                  }
+                >
+                  <View
+                    style={
+                      styles.warningHeader
+                    }
+                  >
+                    <View
+                      style={{
+                        flex: 1,
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.warningName,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        {
+                          log.studentName
+                        }
+                      </Text>
+
+                      <Text
+                        style={{
+                          color:
+                            colors.textMuted,
+                          fontSize: 11,
+                        }}
+                      >
+                        {
+                          log.focusType
+                        }{' '}
+                        •{' '}
+                        {
+                          log.date
+                        }
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.warningBadge,
+                        {
+                          backgroundColor:
+                            colors.error +
+                            '20',
+                        },
+                      ]}
+                    >
+                      <ShieldAlert
+                        size={12}
+                        color={
+                          colors.error
+                        }
+                      />
+
+                      <Text
+                        style={{
+                          color:
+                            colors.error,
+                          fontSize: 9,
+                          fontWeight:
+                            '900',
+                          marginLeft: 4,
+                        }}
+                      >
+                        SILENT
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.warningBody,
+                      {
+                        borderTopColor:
+                          colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          colors.text,
+                        fontSize: 12,
+                        lineHeight: 18,
+                      }}
+                    >
+                      {
+                        log.warning
+                      }
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.broadcastBtn,
+                      {
+                        borderColor:
+                          colors.primary,
+                        backgroundColor:
+                          colors.primary +
+                          '12',
+                      },
+                    ]}
+                    onPress={() =>
+                      Share.share({
+                        message: `Silence alert: ${log.warning}`,
+                      })
+                    }
+                  >
+                    <VolumeX
+                      size={13}
+                      color={
+                        colors.primary
+                      }
+                    />
+
+                    <Text
+                      style={{
+                        color:
+                          colors.primary,
+                        fontWeight:
+                          '800',
+                        fontSize: 10,
+                        marginLeft: 5,
+                      }}
+                    >
+                      Broadcast
+                      Alert
+                    </Text>
+                  </TouchableOpacity>
+                </GlassCard>
+              )
+            )}
+          </>
+        )}
+
+        {/* PASSES */}
+        {activeTab ===
+          'passes' && (
+          <>
+            {passesData.map(
+              (pass) => (
+                <GlassCard
+                  key={pass.id}
+                  style={
+                    styles.passCard
+                  }
+                >
+                  <View
+                    style={
+                      styles.warningHeader
+                    }
+                  >
+                    <View
+                      style={{
+                        flex: 1,
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.warningName,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        {
+                          pass.name
+                        }
+                      </Text>
+
+                      <Text
+                        style={{
+                          color:
+                            colors.textMuted,
+                          fontSize: 11,
+                        }}
+                      >
+                        {
+                          pass.goal
+                        }{' '}
+                        •{' '}
+                        {
+                          pass.desk
+                        }
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.passValidity,
+                        {
+                          backgroundColor:
+                            colors.success +
+                            '20',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            colors.success,
+                          fontSize: 9,
+                          fontWeight:
+                            '900',
+                        }}
+                      >
+                        VALID
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.passFooter,
+                      {
+                        borderTopColor:
+                          colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          colors.textMuted,
+                        fontSize: 11,
+                      }}
+                    >
+                      {
+                        pass.validity
+                      }
+                    </Text>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.verifyBtn,
+                        {
+                          backgroundColor:
+                            colors.surface,
+                        },
+                      ]}
+                      onPress={() =>
+                        Alert.alert(
+                          'Verified',
+                          'Pass validated successfully.'
+                        )
+                      }
+                    >
+                      <Text
+                        style={{
+                          color:
+                            colors.text,
+                          fontSize: 10,
+                          fontWeight:
+                            '700',
+                        }}
+                      >
+                        Verify
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </GlassCard>
+              )
+            )}
+          </>
+        )}
+
+        <View
+          style={{
+            height: 120,
+          }}
+        />
       </ScrollView>
 
-      {/* Floating Bottom Navigation */}
-      <View style={[
-        styles.bottomTabBar, 
-        { 
-          backgroundColor: colors.surface + 'E8', 
-          borderColor: colors.border,
-          shadowColor: colors.primary,
-        }
-      ]}>
+      {/* BOTTOM NAV */}
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            backgroundColor:
+              colors.surface +
+              'E8',
+            borderColor:
+              colors.border,
+          },
+        ]}
+      >
         {[
-            { id: 'seats', label: 'Study Seat Map', icon: BookOpen },
-            { id: 'silent', label: 'Silent Focus Zone', icon: VolumeX },
-            { id: 'passes', label: 'Study Passes', icon: Clock },
-          ].map(tab => {
-          const isActive = activeTab === tab.id;
+          {
+            id: 'seats',
+            label: 'Seats',
+            icon: BookOpen,
+          },
+          {
+            id: 'silent',
+            label: 'Silence',
+            icon: VolumeX,
+          },
+          {
+            id: 'passes',
+            label: 'Passes',
+            icon: Clock3,
+          },
+        ].map((tab) => {
           const Icon = tab.icon;
+
+          const active =
+            activeTab === tab.id;
+
           return (
             <TouchableOpacity
               key={tab.id}
-              style={[styles.bottomTabBtn, isActive && { backgroundColor: colors.primary + '18' }]}
-              onPress={() => setActiveTab(tab.id as any)}
+              style={[
+                styles.bottomBtn,
+                active && {
+                  backgroundColor:
+                    colors.primary +
+                    '20',
+                },
+              ]}
+              onPress={() =>
+                setActiveTab(
+                  tab.id as TabType
+                )
+              }
             >
-              <View style={[styles.bottomTabIndicator, isActive && { backgroundColor: colors.primary }]} />
-              <Icon size={20} color={isActive ? colors.primary : colors.textMuted} />
-              <Text style={[styles.bottomTabLabel, { color: isActive ? colors.primary : colors.textMuted }]}>
-                {tab.label.trim()}
+              <Icon
+                size={20}
+                color={
+                  active
+                    ? colors.primary
+                    : colors.textMuted
+                }
+              />
+
+              <Text
+                style={{
+                  color: active
+                    ? colors.primary
+                    : colors.textMuted,
+                  fontSize: 10,
+                  fontWeight: '900',
+                }}
+              >
+                {tab.label}
               </Text>
             </TouchableOpacity>
           );
@@ -541,277 +1526,286 @@ function LibraryManagerScreenMerchant() {
       </View>
     </View>
   );
-
 }
 
-
-const styles: any = StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 8,
   },
-  tabBarContainer: {
-    height: 48,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-  },
-  tabsScroll: {
-    paddingHorizontal: Spacing.md,
-    alignItems: 'center',
-    gap: 8,
-  },
-  tabBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  tabIcon: {
-    marginRight: 4,
-  },
-  tabLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
+
   scrollContent: {
     padding: Spacing.md,
   },
-  introHeader: {
+
+  analyticsCard: {
+    padding: 20,
+    borderRadius: 24,
+    marginBottom: 20,
+  },
+
+  analyticsHeader: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+    alignItems: 'center',
+  },
+
+  analyticsMini: {
+    color:
+      'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+
+  analyticsValue: {
+    color: '#FFF',
+    fontSize: 30,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+
+  analyticsDivider: {
+    height: 1,
+    backgroundColor:
+      'rgba(255,255,255,0.15)',
+    marginVertical: 16,
+  },
+
+  analyticsStats: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+  },
+
+  analyticsStatValue: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+
+  analyticsStatLabel: {
+    color:
+      'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    marginTop: 2,
+  },
+
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+    alignItems: 'center',
     marginBottom: 16,
   },
-  introTitle: {
-    fontSize: 18,
-    fontWeight: '800',
+
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '900',
   },
-  introSub: {
-    fontSize: 12,
+
+  sectionSub: {
     marginTop: 4,
-    lineHeight: 16,
+    fontSize: 12,
   },
-  sectionTitleHeader: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.textMuted,
-    letterSpacing: 0.5,
-    marginVertical: 10,
+
+  addBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  chairsGrid: {
+
+  formCard: {
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 16,
+  },
+
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+
+  formTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    marginLeft: 8,
+  },
+
+  formInput: {
+    height: 46,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+
+  submitBtn: {
+    height: 46,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  submitText: {
+    color: '#FFF',
+    fontWeight: '900',
+  },
+
+  seatGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
-    marginBottom: 20,
   },
-  chairCard: {
-    flex: 1,
-    minWidth: '45%',
-    padding: 12,
-    borderRadius: 16,
+
+  seatCard: {
+    width: '48%',
+    padding: 14,
+    borderRadius: 18,
   },
-  chairHeader: {
+
+  seatHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent:
+      'space-between',
     alignItems: 'center',
-    marginBottom: 8,
   },
-  miniStatusBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 4,
+
+  seatBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
-  clientName: {
+
+  seatName: {
     fontSize: 14,
-    fontWeight: '800',
-    marginTop: 2,
+    fontWeight: '900',
+    marginTop: 8,
   },
-  smallSettleBtn: {
-    height: 26,
+
+  vacateBtn: {
+    height: 32,
+    borderRadius: 10,
     borderWidth: 1,
-    borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 12,
   },
-  callNextBtn: {
-    height: 26,
-    borderRadius: 6,
+
+  allocateNowBtn: {
+    height: 32,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 14,
+    marginTop: 16,
   },
-  billFormCard: {
+
+  passOptionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+
+  passChip: {
+    flex: 1,
+    height: 44,
+    borderWidth: 1,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  warningCard: {
     padding: 16,
-    marginBottom: 16,
-    borderRadius: 16,
+    borderRadius: 20,
+    marginBottom: 12,
   },
-  formHeaderRow: {
+
+  warningHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
   },
-  formTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    flex: 1,
-    marginLeft: 6,
+
+  warningName: {
+    fontSize: 15,
+    fontWeight: '900',
   },
-  inlineInputsGrid: {
+
+  warningBadge: {
     flexDirection: 'row',
-    marginBottom: 10,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
   },
-  inputLabel: {
-    fontSize: 10,
-    marginBottom: 2,
-    fontWeight: '700',
+
+  warningBody: {
+    borderTopWidth: 1,
+    marginTop: 12,
+    paddingTop: 12,
   },
-  selectBoxArea: {
-    flexDirection: 'row',
-    gap: 4,
-    height: 40,
-  },
-  smallSelectChip: {
-    flex: 1,
+
+  broadcastBtn: {
     height: 36,
     borderWidth: 1,
-    borderRadius: 6,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  formInput: {
-    height: 40,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    fontSize: 13,
-    marginBottom: 10,
-    backgroundColor: 'rgba(255,255,255,0.01)',
-  },
-  submitBtn: {
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  queueHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    marginTop: 14,
   },
-  miniAddBtn: {
-    flexDirection: 'row',
-    paddingHorizontal: 10,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  modalFormCard: {
+
+  passCard: {
     padding: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-  },
-  allergyCard: {
-    padding: 14,
+    borderRadius: 20,
     marginBottom: 12,
-    borderRadius: 16,
   },
-  studentNameText: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  severityBadge: {
-    flexDirection: 'row',
+
+  passValidity: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    alignItems: 'center',
+    paddingVertical: 4,
+    borderRadius: 10,
   },
-  allergyWarningPanel: {
+
+  passFooter: {
     borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 6,
-    marginBottom: 10,
-  },
-  warningInstructionText: {
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  verifiedAllergyBtn: {
-    height: 30,
-    borderRadius: 6,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginTop: 12,
+    paddingTop: 12,
     flexDirection: 'row',
+    justifyContent:
+      'space-between',
+    alignItems: 'center',
   },
-  scheduleCard: {
-    padding: 14,
-    marginBottom: 12,
-    borderRadius: 16,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
-    borderRadius: 6,
+
+  verifyBtn: {
+    height: 34,
+    borderRadius: 10,
+    paddingHorizontal: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  scheduleFooter: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 6,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  scheduleBtn: {
-    paddingHorizontal: 12,
-    height: 28,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bottomTabBar: {
+
+  bottomBar: {
     position: 'absolute',
-    bottom: 20,
     left: 16,
     right: 16,
-    height: 72,
-    borderRadius: 22,
+    bottom: 20,
+    height: 74,
+    borderRadius: 24,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 6,
-    elevation: 12,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
+    paddingHorizontal: 8,
   },
-  bottomTabBtn: {
+
+  bottomBtn: {
     flex: 1,
-    height: 56,
-    borderRadius: 16,
+    height: 58,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 3,
-  },
-  bottomTabIndicator: {
-    width: 16,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: 'transparent',
-    marginBottom: 2,
-  },
-  bottomTabLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: 0.2,
+    gap: 4,
   },
 });

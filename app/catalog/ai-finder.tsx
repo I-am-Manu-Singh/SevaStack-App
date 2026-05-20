@@ -1,374 +1,1514 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { Camera, Sparkles, RefreshCcw, Check, ChevronRight, Upload } from 'lucide-react-native';
-import { Colors, Spacing, Typography } from '@/constants/Theme';
-import { GlassCard } from '@/components/GlassCard';
-import { HaircutStyle } from '@/constants/Types';
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 
-const HAIRCUT_STYLES: HaircutStyle[] = [
-  { id: 'h1', name: 'Premium Skin Fade', image: 'https://images.unsplash.com/photo-1599351431247-f10b218163e3?w=400&q=80', tags: ['Modern', 'Sharp', 'Low Maintenance'] },
-  { id: 'h2', name: 'Classic Side Part', image: 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=400&q=80', tags: ['Professional', 'Timeless'] },
-  { id: 'h3', name: 'Textured Crop', image: 'https://images.unsplash.com/photo-1621605815841-28d644ef915a?w=400&q=80', tags: ['Messy', 'Young', 'Textured'] },
-  { id: 'h4', name: 'Long Flow', image: 'https://images.unsplash.com/photo-1519345182560-3f2917c472ef?w=400&q=80', tags: ['Natural', 'Casual'] },
-];
+import {
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  Platform,
+} from 'react-native';
+
+import {
+  Camera,
+  Sparkles,
+  RefreshCcw,
+  ChevronRight,
+  Upload,
+  Wand2,
+  BrainCircuit,
+  ScanFace,
+  CheckCircle2,
+} from 'lucide-react-native';
+
+import {
+  Stack,
+} from 'expo-router';
+
+import {
+  Spacing,
+} from '@/constants/Theme';
+
+import {
+  GlassCard,
+} from '@/components/GlassCard';
+
+import {
+  HaircutStyle,
+} from '@/constants/Types';
+
+import {
+  useApp,
+} from '@/lib/AppContext';
+
+import {
+  StatusBar,
+} from 'expo-status-bar';
+
+import {
+  LinearGradient,
+} from 'expo-linear-gradient';
+
+// ======================================================
+// CONFIG
+// ======================================================
+
+const BUSINESS_AI_CONFIGS: Record<
+  string,
+  {
+    title: string;
+    uploadTitle: string;
+    uploadDesc: string;
+    btnLabel: string;
+    analyzingSteps: string[];
+    resultsTitle: string;
+    resultsDesc: string;
+    recommendations: HaircutStyle[];
+  }
+> = {
+  Barber: {
+    title: 'AI Style Finder',
+
+    uploadTitle:
+      'Scan Your Face',
+
+    uploadDesc:
+      'Analyze face shape, hair texture and styling compatibility to discover the best haircut patterns.',
+
+    btnLabel:
+      'Start Face Scan',
+
+    analyzingSteps: [
+      'Detecting facial structure',
+      'Analyzing hair density',
+      'Matching trending styles',
+    ],
+
+    resultsTitle:
+      'Perfect Match Found',
+
+    resultsDesc:
+      'Based on your facial structure and styling profile, these recommendations have the highest compatibility.',
+
+    recommendations: [
+      {
+        id: 'b1',
+        name:
+          'Premium Skin Fade',
+        image:
+          'https://images.unsplash.com/photo-1599351431247-f10b218163e3?w=400&q=80',
+        tags: [
+          'Modern',
+          'Sharp',
+          'Low Maintenance',
+        ],
+      },
+
+      {
+        id: 'b2',
+        name:
+          'Classic Side Part',
+        image:
+          'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=400&q=80',
+        tags: [
+          'Professional',
+          'Timeless',
+        ],
+      },
+
+      {
+        id: 'b3',
+        name:
+          'Textured Crop',
+        image:
+          'https://images.unsplash.com/photo-1621605815841-28d644ef915a?w=400&q=80',
+        tags: [
+          'Messy',
+          'Young',
+          'Textured',
+        ],
+      },
+    ],
+  },
+
+  Default: {
+    title:
+      'AI Business Optimizer',
+
+    uploadTitle:
+      'Analyze Your Business',
+
+    uploadDesc:
+      'Scan your catalog or business metrics to generate optimized recommendations and service insights.',
+
+    btnLabel:
+      'Analyze Portal',
+
+    analyzingSteps: [
+      'Auditing service patterns',
+      'Evaluating engagement metrics',
+      'Generating optimization insights',
+    ],
+
+    resultsTitle:
+      'Optimization Complete',
+
+    resultsDesc:
+      'AI identified several opportunities to improve customer engagement and conversion rates.',
+
+    recommendations: [
+      {
+        id: 'd1',
+        name:
+          'Dynamic Pricing Bundle',
+        image:
+          'https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=400&q=80',
+        tags: [
+          'Revenue Boost',
+          'AI Pricing',
+        ],
+      },
+
+      {
+        id: 'd2',
+        name:
+          'Priority Delivery Slot',
+        image:
+          'https://images.unsplash.com/photo-1545180856-f2868ff128c7?w=400&q=80',
+        tags: [
+          'Fast Delivery',
+          'Premium',
+        ],
+      },
+    ],
+  },
+};
+
+// ======================================================
+// SCREEN
+// ======================================================
 
 export default function AIFinderScreen() {
-  const [step, setStep] = useState<'upload' | 'analyzing' | 'results'>('upload');
-  const [analyzingProgress, setAnalyzingProgress] = useState(0);
-  const router = useRouter();
+  const {
+    colors,
+    theme,
+    businessType,
+  } = useApp();
+
+  const [
+    step,
+    setStep,
+  ] = useState<
+    'upload' |
+    'analyzing' |
+    'results'
+  >('upload');
+
+  const [
+    analyzingProgress,
+    setAnalyzingProgress,
+  ] = useState(0);
+
+  const config =
+    BUSINESS_AI_CONFIGS[
+      businessType
+    ] ||
+    BUSINESS_AI_CONFIGS.Default;
+
+  // ======================================================
+  // ANALYSIS LOOP
+  // ======================================================
 
   useEffect(() => {
-    if (step === 'analyzing') {
-      const interval = setInterval(() => {
-        setAnalyzingProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            setStep('results');
-            return 100;
+    if (
+      step !==
+      'analyzing'
+    )
+      return;
+
+    const interval =
+      setInterval(() => {
+        setAnalyzingProgress(
+          (prev) => {
+            if (
+              prev >= 100
+            ) {
+              clearInterval(
+                interval
+              );
+
+              setTimeout(() => {
+                setStep(
+                  'results'
+                );
+              }, 300);
+
+              return 100;
+            }
+
+            return (
+              prev + 5
+            );
           }
-          return prev + 5;
-        });
-      }, 150);
-      return () => clearInterval(interval);
-    }
+        );
+      }, 120);
+
+    return () =>
+      clearInterval(
+        interval
+      );
   }, [step]);
 
-  const startAnalysis = () => {
-    setStep('analyzing');
-    setAnalyzingProgress(0);
-  };
+  // ======================================================
+  // START
+  // ======================================================
 
-  const renderUpload = () => (
-    <View style={styles.centerContent}>
-      <GlassCard style={styles.uploadCard}>
-        <View style={styles.iconContainer}>
-          <Camera size={48} color={Colors.primary} />
+  const startAnalysis =
+    () => {
+      setAnalyzingProgress(
+        0
+      );
+
+      setStep(
+        'analyzing'
+      );
+    };
+
+  // ======================================================
+  // PROGRESS LABEL
+  // ======================================================
+
+  const currentAnalysisLabel =
+    useMemo(() => {
+      if (
+        analyzingProgress <
+        30
+      )
+        return config
+          .analyzingSteps[0];
+
+      if (
+        analyzingProgress <
+        70
+      )
+        return config
+          .analyzingSteps[1];
+
+      return config
+        .analyzingSteps[2];
+    }, [
+      analyzingProgress,
+      config,
+    ]);
+
+  // ======================================================
+  // UPLOAD
+  // ======================================================
+
+  const renderUpload =
+    () => (
+      <ScrollView
+        contentContainerStyle={
+          styles.uploadScroll
+        }
+        showsVerticalScrollIndicator={
+          false
+        }
+      >
+        <LinearGradient
+          colors={[
+            colors.primary +
+              '15',
+            'transparent',
+          ]}
+          style={
+            styles.heroGradient
+          }
+        />
+
+        <GlassCard
+          style={[
+            styles.heroCard,
+            {
+              backgroundColor:
+                colors.surface,
+              borderColor:
+                colors.border,
+            },
+          ]}
+        >
+          <View
+            style={
+              styles.heroTop
+            }
+          >
+            <View
+              style={{
+                flex: 1,
+              }}
+            >
+              <Text
+                style={[
+                  styles.heroTitle,
+                  {
+                    color:
+                      colors.text,
+                  },
+                ]}
+              >
+                {
+                  config.title
+                }
+              </Text>
+
+              <Text
+                style={[
+                  styles.heroDesc,
+                  {
+                    color:
+                      colors.textMuted,
+                  },
+                ]}
+              >
+                {
+                  config.uploadDesc
+                }
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.heroIconWrap,
+                {
+                  backgroundColor:
+                    colors.primary +
+                    '15',
+                },
+              ]}
+            >
+              <BrainCircuit
+                size={30}
+                color={
+                  colors.primary
+                }
+              />
+            </View>
+          </View>
+
+          <View
+            style={
+              styles.scanPreviewWrap
+            }
+          >
+            <View
+              style={[
+                styles.scanPreview,
+                {
+                  borderColor:
+                    colors.primary +
+                    '35',
+                  backgroundColor:
+                    colors.background,
+                },
+              ]}
+            >
+              <ScanFace
+                size={70}
+                color={
+                  colors.primary
+                }
+              />
+            </View>
+          </View>
+
+          <TouchableOpacity
+            activeOpacity={
+              0.88
+            }
+            style={[
+              styles.primaryBtn,
+              {
+                backgroundColor:
+                  colors.primary,
+              },
+            ]}
+            onPress={
+              startAnalysis
+            }
+          >
+            <Camera
+              size={20}
+              color="#FFF"
+            />
+
+            <Text
+              style={
+                styles.primaryBtnText
+              }
+            >
+              {
+                config.btnLabel
+              }
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={
+              0.88
+            }
+            style={[
+              styles.secondaryBtn,
+              {
+                borderColor:
+                  colors.border,
+                backgroundColor:
+                  colors.background,
+              },
+            ]}
+          >
+            <Upload
+              size={18}
+              color={
+                colors.text
+              }
+            />
+
+            <Text
+              style={[
+                styles.secondaryBtnText,
+                {
+                  color:
+                    colors.text,
+                },
+              ]}
+            >
+              Upload Photo
+            </Text>
+          </TouchableOpacity>
+        </GlassCard>
+
+        {/* TIPS */}
+
+        <GlassCard
+          style={[
+            styles.tipsCard,
+            {
+              backgroundColor:
+                colors.surface,
+              borderColor:
+                colors.border,
+            },
+          ]}
+        >
+          <View
+            style={
+              styles.tipHeader
+            }
+          >
+            <Sparkles
+              size={18}
+              color={
+                colors.primary
+              }
+            />
+
+            <Text
+              style={[
+                styles.tipTitle,
+                {
+                  color:
+                    colors.text,
+                },
+              ]}
+            >
+              Scan Tips
+            </Text>
+          </View>
+
+          {[
+            'Ensure proper lighting',
+            'Avoid blurry movement',
+            'Keep face centered',
+            'Remove strong shadows',
+          ].map(
+            (tip) => (
+              <View
+                key={tip}
+                style={
+                  styles.tipRow
+                }
+              >
+                <CheckCircle2
+                  size={14}
+                  color={
+                    colors.success ||
+                    '#10B981'
+                  }
+                />
+
+                <Text
+                  style={[
+                    styles.tipText,
+                    {
+                      color:
+                        colors.textMuted,
+                    },
+                  ]}
+                >
+                  {tip}
+                </Text>
+              </View>
+            )
+          )}
+        </GlassCard>
+      </ScrollView>
+    );
+
+  // ======================================================
+  // ANALYZING
+  // ======================================================
+
+  const renderAnalyzing =
+    () => (
+      <View
+        style={[
+          styles.analyzeContainer,
+          {
+            backgroundColor:
+              colors.background,
+          },
+        ]}
+      >
+        <LinearGradient
+          colors={[
+            colors.primary +
+              '12',
+            'transparent',
+          ]}
+          style={
+            styles.analyzeGradient
+          }
+        />
+
+        <View
+          style={[
+            styles.analyzeOrb,
+            {
+              backgroundColor:
+                colors.primary +
+                '12',
+              borderColor:
+                colors.primary +
+                '25',
+            },
+          ]}
+        >
+          <Wand2
+            size={56}
+            color={
+              colors.primary
+            }
+          />
         </View>
-        <Text style={styles.uploadTitle}>Scan Your Face</Text>
-        <Text style={styles.uploadDesc}>
-          Our AI will analyze your face shape, hair type, and features to recommend the perfect styles.
+
+        <Text
+          style={[
+            styles.analyzeTitle,
+            {
+              color:
+                colors.text,
+            },
+          ]}
+        >
+          AI Processing
         </Text>
-        
-        <TouchableOpacity style={styles.primaryBtn} onPress={startAnalysis}>
-          <Camera size={20} color="#FFF" />
-          <Text style={styles.btnText}>Open Camera</Text>
-        </TouchableOpacity>
 
-        <TouchableOpacity style={styles.secondaryBtn}>
-          <Upload size={20} color={Colors.text} />
-          <Text style={[styles.btnText, { color: Colors.text }]}>Upload Photo</Text>
-        </TouchableOpacity>
-      </GlassCard>
+        <Text
+          style={[
+            styles.analyzeDesc,
+            {
+              color:
+                colors.textMuted,
+            },
+          ]}
+        >
+          {currentAnalysisLabel}
+        </Text>
 
-      <View style={styles.tipsContainer}>
-        <Text style={styles.tipsTitle}>Pro Tips:</Text>
-        <Text style={styles.tipText}>• Ensure good lighting</Text>
-        <Text style={styles.tipText}>• Look directly into the camera</Text>
-        <Text style={styles.tipText}>• Keep a neutral expression</Text>
-      </View>
-    </View>
-  );
-
-  const renderAnalyzing = () => (
-    <View style={styles.centerContent}>
-      <View style={styles.analysisContainer}>
-        <View style={styles.pulseContainer}>
-          <Sparkles size={60} color={Colors.primary} />
+        <View
+          style={[
+            styles.progressBarWrap,
+            {
+              backgroundColor:
+                colors.border +
+                '25',
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.progressBar,
+              {
+                width: `${analyzingProgress}%`,
+                backgroundColor:
+                  colors.primary,
+              },
+            ]}
+          />
         </View>
-        <Text style={styles.analyzingTitle}>Analyzing Features...</Text>
-        <View style={styles.progressBarContainer}>
-          <View style={[styles.progressBar, { width: `${analyzingProgress}%` }]} />
-        </View>
-        <Text style={styles.progressText}>{analyzingProgress}% Complete</Text>
-        
-        <View style={styles.logContainer}>
-          <Text style={styles.logText}>{analyzingProgress > 20 ? ' Detecting face shape' : '○ Detecting face shape'}</Text>
-          <Text style={styles.logText}>{analyzingProgress > 50 ? ' Analyzing hair density' : '○ Analyzing hair density'}</Text>
-          <Text style={styles.logText}>{analyzingProgress > 80 ? ' Matching with top styles' : '○ Matching with top styles'}</Text>
-        </View>
-      </View>
-    </View>
-  );
 
-  const renderResults = () => (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-      <View style={styles.resultsHeader}>
-        <GlassCard style={styles.matchCard}>
-          <Sparkles size={24} color={Colors.secondary} />
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.matchTitle}>Perfect Match Found!</Text>
-            <Text style={styles.matchDesc}>Based on your diamond face shape, we recommend these 3 styles.</Text>
-          </View>
-        </GlassCard>
-      </View>
+        <Text
+          style={[
+            styles.progressText,
+            {
+              color:
+                colors.textMuted,
+            },
+          ]}
+        >
+          {
+            analyzingProgress
+          }
+          % Complete
+        </Text>
 
-      <Text style={styles.sectionTitle}>Top Recommendations</Text>
-      {HAIRCUT_STYLES.slice(0, 3).map((item, index) => (
-        <GlassCard key={item.id} style={styles.styleCard}>
-          <Image source={{ uri: item.image }} style={styles.styleImg} />
-          <View style={styles.styleInfo}>
-            <View style={styles.matchBadge}>
-              <Text style={styles.matchBadgeText}>{98 - index * 5}% Match</Text>
-            </View>
-            <Text style={styles.styleName}>{item.name}</Text>
-            <View style={styles.tagRow}>
-              {item.tags.map(tag => (
-                <View key={tag} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
+        <View
+          style={
+            styles.analysisLogs
+          }
+        >
+          {config.analyzingSteps.map(
+            (
+              item,
+              index
+            ) => {
+              const completed =
+                analyzingProgress >
+                (index +
+                  1) *
+                  30;
+
+              return (
+                <View
+                  key={
+                    item
+                  }
+                  style={
+                    styles.logRow
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.logBullet,
+                      {
+                        color:
+                          completed
+                            ? colors.success ||
+                              '#10B981'
+                            : colors.textMuted,
+                      },
+                    ]}
+                  >
+                    {completed
+                      ? '✓'
+                      : '○'}
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.logTxt,
+                      {
+                        color:
+                          completed
+                            ? colors.text
+                            : colors.textMuted,
+                      },
+                    ]}
+                  >
+                    {item}
+                  </Text>
                 </View>
-              ))}
-            </View>
-            <TouchableOpacity style={styles.bookBtn}>
-              <Text style={styles.bookBtnText}>Try This Style</Text>
-              <ChevronRight size={16} color="#FFF" />
-            </TouchableOpacity>
-          </View>
-        </GlassCard>
-      ))}
+              );
+            }
+          )}
+        </View>
+      </View>
+    );
 
-      <TouchableOpacity style={styles.restartBtn} onPress={() => setStep('upload')}>
-        <RefreshCcw size={20} color={Colors.primary} />
-        <Text style={styles.restartBtnText}>Scan Again</Text>
-      </TouchableOpacity>
-      
-      <View style={{ height: 40 }} />
-    </ScrollView>
-  );
+  // ======================================================
+  // RESULTS
+  // ======================================================
+
+  const renderResults =
+    () => (
+      <ScrollView
+        contentContainerStyle={
+          styles.resultsScroll
+        }
+        showsVerticalScrollIndicator={
+          false
+        }
+      >
+        <GlassCard
+          style={[
+            styles.resultHero,
+            {
+              backgroundColor:
+                colors.surface,
+              borderColor:
+                colors.border,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.resultBadge,
+              {
+                backgroundColor:
+                  colors.success +
+                  '15',
+              },
+            ]}
+          >
+            <Sparkles
+              size={16}
+              color={
+                colors.success ||
+                '#10B981'
+              }
+            />
+
+            <Text
+              style={[
+                styles.resultBadgeText,
+                {
+                  color:
+                    colors.success ||
+                    '#10B981',
+                },
+              ]}
+            >
+              AI MATCHED
+            </Text>
+          </View>
+
+          <Text
+            style={[
+              styles.resultTitle,
+              {
+                color:
+                  colors.text,
+              },
+            ]}
+          >
+            {
+              config.resultsTitle
+            }
+          </Text>
+
+          <Text
+            style={[
+              styles.resultDesc,
+              {
+                color:
+                  colors.textMuted,
+              },
+            ]}
+          >
+            {
+              config.resultsDesc
+            }
+          </Text>
+        </GlassCard>
+
+        <Text
+          style={[
+            styles.sectionTitle,
+            {
+              color:
+                colors.text,
+            },
+          ]}
+        >
+          Top Recommendations
+        </Text>
+
+        {config.recommendations.map(
+          (
+            item,
+            index
+          ) => (
+            <GlassCard
+              key={item.id}
+              style={[
+                styles.styleCard,
+                {
+                  backgroundColor:
+                    colors.surface,
+                  borderColor:
+                    colors.border,
+                },
+              ]}
+            >
+              <Image
+                source={{
+                  uri: item.image,
+                }}
+                style={
+                  styles.styleImg
+                }
+              />
+
+              <View
+                style={
+                  styles.styleInfo
+                }
+              >
+                <View
+                  style={[
+                    styles.matchBadge,
+                    {
+                      backgroundColor:
+                        colors.primary +
+                        '15',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.matchBadgeText,
+                      {
+                        color:
+                          colors.primary,
+                      },
+                    ]}
+                  >
+                    {98 -
+                      index *
+                        4}
+                    % Match
+                  </Text>
+                </View>
+
+                <Text
+                  style={[
+                    styles.styleName,
+                    {
+                      color:
+                        colors.text,
+                    },
+                  ]}
+                >
+                  {
+                    item.name
+                  }
+                </Text>
+
+                <View
+                  style={
+                    styles.tagRow
+                  }
+                >
+                  {item.tags.map(
+                    (
+                      tag
+                    ) => (
+                      <View
+                        key={
+                          tag
+                        }
+                        style={[
+                          styles.tag,
+                          {
+                            backgroundColor:
+                              colors.background,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.tagText,
+                            {
+                              color:
+                                colors.textMuted,
+                            },
+                          ]}
+                        >
+                          {tag}
+                        </Text>
+                      </View>
+                    )
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  activeOpacity={
+                    0.88
+                  }
+                  style={[
+                    styles.selectBtn,
+                    {
+                      backgroundColor:
+                        colors.primary,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={
+                      styles.selectBtnText
+                    }
+                  >
+                    Select
+                    Pattern
+                  </Text>
+
+                  <ChevronRight
+                    size={16}
+                    color="#FFF"
+                  />
+                </TouchableOpacity>
+              </View>
+            </GlassCard>
+          )
+        )}
+
+        <TouchableOpacity
+          activeOpacity={0.8}
+          style={
+            styles.restartBtn
+          }
+          onPress={() =>
+            setStep(
+              'upload'
+            )
+          }
+        >
+          <RefreshCcw
+            size={18}
+            color={
+              colors.primary
+            }
+          />
+
+          <Text
+            style={[
+              styles.restartText,
+              {
+                color:
+                  colors.primary,
+              },
+            ]}
+          >
+            Scan Again
+          </Text>
+        </TouchableOpacity>
+
+        <View
+          style={{ height: 60 }}
+        />
+      </ScrollView>
+    );
+
+  // ======================================================
+  // UI
+  // ======================================================
 
   return (
-    <View style={styles.container}>
-      <Stack.Screen options={{ title: 'AI Style Finder', headerTransparent: true, headerTintColor: '#FFF' }} />
-      {step === 'upload' && renderUpload()}
-      {step === 'analyzing' && renderAnalyzing()}
-      {step === 'results' && renderResults()}
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor:
+            colors.background,
+        },
+      ]}
+    >
+      <StatusBar
+        style={
+          theme === 'dark'
+            ? 'light'
+            : 'dark'
+        }
+      />
+
+      <Stack.Screen
+        options={{
+          title:
+            config.title,
+
+          headerShadowVisible:
+            false,
+
+          headerStyle: {
+            backgroundColor:
+              colors.background,
+          },
+
+          headerTitleStyle: {
+            color:
+              colors.text,
+            fontWeight:
+              '900',
+          },
+
+          headerTintColor:
+            colors.text,
+        }}
+      />
+
+      {step ===
+        'upload' &&
+        renderUpload()}
+
+      {step ===
+        'analyzing' &&
+        renderAnalyzing()}
+
+      {step ===
+        'results' &&
+        renderResults()}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  centerContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: Spacing.lg,
-  },
-  scrollContent: {
-    padding: Spacing.md,
-    paddingTop: 100, // For transparent header
-  },
-  uploadCard: {
-    width: '100%',
-    padding: Spacing.xl,
-    alignItems: 'center',
-    gap: 16,
-  },
-  iconContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(99, 102, 241, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  uploadTitle: {
-    ...Typography.h2,
-    color: Colors.text,
-  },
-  uploadDesc: {
-    ...Typography.body,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  primaryBtn: {
-    width: '100%',
-    height: 56,
-    backgroundColor: Colors.primary,
-    borderRadius: 16,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 12,
-  },
-  secondaryBtn: {
-    width: '100%',
-    height: 56,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 16,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-  },
-  btnText: {
-    ...Typography.body,
-    fontWeight: '700',
-    color: '#FFF',
-  },
-  tipsContainer: {
-    marginTop: 32,
-    width: '100%',
-    paddingHorizontal: 12,
-  },
-  tipsTitle: {
-    ...Typography.body,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  tipText: {
-    ...Typography.caption,
-    color: Colors.textMuted,
-    marginBottom: 4,
-    fontSize: 14,
-  },
-  analysisContainer: {
-    alignItems: 'center',
-    width: '100%',
-  },
-  pulseContainer: {
-    marginBottom: 32,
-  },
-  analyzingTitle: {
-    ...Typography.h2,
-    color: Colors.text,
-    marginBottom: 24,
-  },
-  progressBarContainer: {
-    width: '80%',
-    height: 8,
-    backgroundColor: Colors.surface,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: Colors.primary,
-  },
-  progressText: {
-    marginTop: 12,
-    color: Colors.textMuted,
-    fontWeight: '600',
-  },
-  logContainer: {
-    marginTop: 40,
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  logText: {
-    color: Colors.textMuted,
-    fontFamily: 'monospace',
-    fontSize: 14,
-  },
-  resultsHeader: {
-    marginBottom: Spacing.xl,
-  },
-  matchCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.md,
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-    borderColor: Colors.secondary,
-    borderWidth: 1,
-  },
-  matchTitle: {
-    ...Typography.h3,
-    color: Colors.text,
-  },
-  matchDesc: {
-    ...Typography.caption,
-    fontSize: 13,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  sectionTitle: {
-    ...Typography.h3,
-    color: Colors.text,
-    marginBottom: Spacing.md,
-  },
-  styleCard: {
-    padding: 0,
-    flexDirection: 'row',
-    marginBottom: Spacing.md,
-    overflow: 'hidden',
-  },
-  styleImg: {
-    width: 120,
-    height: 160,
-  },
-  styleInfo: {
-    flex: 1,
-    padding: 12,
-    justifyContent: 'space-between',
-  },
-  matchBadge: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-  },
-  matchBadgeText: {
-    color: Colors.accent,
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  styleName: {
-    ...Typography.body,
-    fontWeight: '700',
-    color: Colors.text,
-    marginTop: 8,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-    marginTop: 8,
-  },
-  tag: {
-    backgroundColor: Colors.surface,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  tagText: {
-    color: Colors.textMuted,
-    fontSize: 10,
-  },
-  bookBtn: {
-    backgroundColor: Colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: 4,
-    marginTop: 12,
-  },
-  bookBtnText: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  restartBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: 16,
-    marginTop: 12,
-  },
-  restartBtnText: {
-    color: Colors.primary,
-    fontWeight: '600',
-  },
-});
+// ======================================================
+// STYLES
+// ======================================================
+
+const styles =
+  StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+
+    uploadScroll: {
+      padding: Spacing.md,
+      paddingBottom: 40,
+    },
+
+    heroGradient: {
+      position:
+        'absolute',
+
+      top: -120,
+      left: -40,
+      right: -40,
+      height: 320,
+    },
+
+    heroCard: {
+      borderRadius: 30,
+      borderWidth: 1,
+      padding: 22,
+      overflow:
+        'hidden',
+    },
+
+    heroTop: {
+      flexDirection:
+        'row',
+      alignItems:
+        'flex-start',
+    },
+
+    heroTitle: {
+      fontSize: 28,
+      fontWeight:
+        '900',
+      letterSpacing:
+        -0.8,
+    },
+
+    heroDesc: {
+      fontSize: 13,
+      lineHeight: 21,
+      marginTop: 10,
+      paddingRight: 12,
+      fontWeight:
+        '500',
+    },
+
+    heroIconWrap: {
+      width: 74,
+      height: 74,
+      borderRadius: 24,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    scanPreviewWrap: {
+      alignItems:
+        'center',
+      marginTop: 26,
+      marginBottom: 24,
+    },
+
+    scanPreview: {
+      width: 170,
+      height: 170,
+      borderRadius: 85,
+      borderWidth: 2,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    primaryBtn: {
+      height: 58,
+      borderRadius: 18,
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
+      gap: 10,
+      marginBottom: 14,
+    },
+
+    primaryBtnText: {
+      color: '#FFF',
+      fontSize: 15,
+      fontWeight:
+        '800',
+    },
+
+    secondaryBtn: {
+      height: 56,
+      borderRadius: 18,
+      borderWidth: 1,
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
+      gap: 10,
+    },
+
+    secondaryBtnText: {
+      fontSize: 14,
+      fontWeight:
+        '700',
+    },
+
+    tipsCard: {
+      marginTop: 18,
+      borderRadius: 24,
+      borderWidth: 1,
+      padding: 18,
+    },
+
+    tipHeader: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      gap: 8,
+      marginBottom: 14,
+    },
+
+    tipTitle: {
+      fontSize: 15,
+      fontWeight:
+        '800',
+    },
+
+    tipRow: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      gap: 10,
+      marginBottom: 10,
+    },
+
+    tipText: {
+      fontSize: 13,
+      fontWeight:
+        '500',
+    },
+
+    analyzeContainer: {
+      flex: 1,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+      padding:
+        Spacing.xl,
+    },
+
+    analyzeGradient: {
+      position:
+        'absolute',
+
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 400,
+    },
+
+    analyzeOrb: {
+      width: 150,
+      height: 150,
+      borderRadius: 75,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+      borderWidth: 2,
+      marginBottom: 34,
+    },
+
+    analyzeTitle: {
+      fontSize: 30,
+      fontWeight:
+        '900',
+      letterSpacing:
+        -0.8,
+    },
+
+    analyzeDesc: {
+      fontSize: 14,
+      marginTop: 10,
+      marginBottom: 28,
+      textAlign:
+        'center',
+      fontWeight:
+        '500',
+    },
+
+    progressBarWrap: {
+      width: '100%',
+      height: 10,
+      borderRadius: 20,
+      overflow:
+        'hidden',
+    },
+
+    progressBar: {
+      height: '100%',
+      borderRadius: 20,
+    },
+
+    progressText: {
+      fontSize: 13,
+      marginTop: 12,
+      fontWeight:
+        '700',
+    },
+
+    analysisLogs: {
+      marginTop: 42,
+      width: '100%',
+      gap: 16,
+    },
+
+    logRow: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      gap: 12,
+    },
+
+    logBullet: {
+      fontSize: 18,
+      fontWeight:
+        '900',
+    },
+
+    logTxt: {
+      fontSize: 14,
+      fontWeight:
+        '600',
+    },
+
+    resultsScroll: {
+      padding:
+        Spacing.md,
+      paddingBottom: 30,
+    },
+
+    resultHero: {
+      borderRadius: 28,
+      borderWidth: 1,
+      padding: 22,
+      marginBottom: 22,
+    },
+
+    resultBadge: {
+      alignSelf:
+        'flex-start',
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 100,
+      marginBottom: 16,
+    },
+
+    resultBadgeText: {
+      fontSize: 10,
+      fontWeight:
+        '900',
+      letterSpacing:
+        0.5,
+    },
+
+    resultTitle: {
+      fontSize: 24,
+      fontWeight:
+        '900',
+      letterSpacing:
+        -0.6,
+    },
+
+    resultDesc: {
+      fontSize: 13,
+      lineHeight: 20,
+      marginTop: 10,
+      fontWeight:
+        '500',
+    },
+
+    sectionTitle: {
+      fontSize: 18,
+      fontWeight:
+        '900',
+      marginBottom: 14,
+    },
+
+    styleCard: {
+      borderRadius: 24,
+      borderWidth: 1,
+      overflow:
+        'hidden',
+      marginBottom: 16,
+
+      ...Platform.select(
+        {
+          ios: {
+            shadowColor:
+              '#000',
+
+            shadowOffset:
+              {
+                width: 0,
+                height: 3,
+              },
+
+            shadowOpacity:
+              0.08,
+
+            shadowRadius: 6,
+          },
+
+          android: {
+            elevation: 2,
+          },
+        }
+      ),
+    },
+
+    styleImg: {
+      width: '100%',
+      height: 220,
+    },
+
+    styleInfo: {
+      padding: 16,
+    },
+
+    matchBadge: {
+      alignSelf:
+        'flex-start',
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 8,
+      marginBottom: 10,
+    },
+
+    matchBadgeText: {
+      fontSize: 10,
+      fontWeight:
+        '900',
+    },
+
+    styleName: {
+      fontSize: 18,
+      fontWeight:
+        '800',
+    },
+
+    tagRow: {
+      flexDirection:
+        'row',
+      flexWrap:
+        'wrap',
+      gap: 8,
+      marginTop: 12,
+    },
+
+    tag: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 10,
+    },
+
+    tagText: {
+      fontSize: 11,
+      fontWeight:
+        '600',
+    },
+
+    selectBtn: {
+      height: 48,
+      borderRadius: 14,
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
+      gap: 6,
+      marginTop: 18,
+    },
+
+    selectBtnText: {
+      color: '#FFF',
+      fontSize: 13,
+      fontWeight:
+        '800',
+    },
+
+    restartBtn: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      justifyContent:
+        'center',
+      gap: 8,
+      marginTop: 12,
+      paddingVertical: 14,
+    },
+
+    restartText: {
+      fontSize: 14,
+      fontWeight:
+        '700',
+    },
+  });

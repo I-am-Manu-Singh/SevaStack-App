@@ -66,10 +66,20 @@ export default function ChatListScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
-          <ChatItemWidget 
-            chat={item} 
-            onPress={() => router.push(`/chat/${item.id}`)} 
-          />
+          <ChatItemWidget
+  chat={item}
+  onPress={() =>
+    router.push({
+      pathname: '/chat/chat_support_screen',
+      params: {
+        id: item.id,
+        name: item.name,
+        avatar: item.avatar,
+        type: item.type,
+      },
+    })
+  }
+/>
         )}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>

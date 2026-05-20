@@ -25,8 +25,13 @@ export default function QuickActionSheet() {
     { label: 'Add Item', icon: Tag, color: colors.secondary, route: '/catalog' },
     { label: 'Add Staff', icon: UserPlus, color: Colors.accent, route: '/(tabs)/staff' },
     { label: 'Request Payment', icon: IndianRupee, color: Colors.success, route: '/(tabs)' },
-    { label: 'New Broadcast', icon: Zap, color: '#f59e0b', route: '/chat' },
-    { label: 'Support Chat', icon: MessageSquare, color: colors.textMuted, route: '/support' },
+   {
+  label: 'New Broadcast',
+  icon: Zap,
+  color: '#f59e0b',
+  route: '/chat/chat_support_list' as const,
+},
+    { label: 'Support Chat', icon: MessageSquare, color: colors.textMuted, route: '/support/support_screen' },
   ];
 
   return (

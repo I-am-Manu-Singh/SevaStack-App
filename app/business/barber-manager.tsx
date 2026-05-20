@@ -1,20 +1,27 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  ScrollView, 
-  TouchableOpacity, 
-  TextInput, 
-  Image, 
-  Alert, 
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+} from 'react';
+
+import {
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
   Share,
   RefreshControl,
-  ActivityIndicator
+  ActivityIndicator,
 } from 'react-native';
+
 import { StatusBar } from 'expo-status-bar';
+
 import { Stack } from 'expo-router';
-import { 
+
+import {
   Scissors,
   Users,
   Clock,
@@ -24,120 +31,338 @@ import {
   Share2,
   CheckCircle2,
   Sparkles,
-  ChevronRight,
-  UserPlus,
   QrCode,
   ShieldAlert,
   ArrowUpRight,
   TrendingUp,
-  Sliders
 } from 'lucide-react-native';
-import { Colors, Spacing, Typography } from '@/constants/Theme';
+
+import {
+  Colors,
+  Spacing,
+} from '@/constants/Theme';
+
 import { GlassCard } from '@/components/GlassCard';
+
 import { useApp } from '@/lib/AppContext';
+
 import { supabase } from '@/lib/supabase';
 
 import { CustomerBusinessView } from '@/components/CustomerBusinessView';
 
+// ======================================================
+// ROOT SCREEN
+// ======================================================
+
 export default function BarberManagerScreen() {
-  const { userRole, businessType } = useApp();
-  
-  if (userRole === 'customer' || businessType !== 'Barber') {
-    return <CustomerBusinessView type="Barber" />;
+  const { userRole, businessType } =
+    useApp();
+
+  if (
+    userRole === 'customer' ||
+    businessType !== 'Barber'
+  ) {
+    return (
+      <CustomerBusinessView type="Barber" />
+    );
   }
 
-  return <BarberManagerScreenMerchant />;
+  return (
+    <BarberManagerScreenMerchant />
+  );
 }
 
+// ======================================================
+// MERCHANT SCREEN
+// ======================================================
+
 function BarberManagerScreenMerchant() {
+  const {
+    colors,
+    profile,
+  } = useApp();
 
-  const { colors, theme, profile, userRole, businessType } = useApp();
-  
-  
+  const [activeTab, setActiveTab] =
+    useState<
+      'queue' | 'allergies' | 'appointments'
+    >('queue');
 
-  const [activeTab, setActiveTab] = useState<'queue' | 'allergies' | 'appointments'>('queue');
+  const [chairs, setChairs] =
+    useState<any[]>([]);
 
-  // Supabase dynamic state
-  const [chairs, setChairs] = useState<any[]>([]);
-  const [queue, setQueue] = useState<any[]>([]);
-  const [allergies, setAllergies] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [queue, setQueue] =
+    useState<any[]>([]);
 
-  const fetchData = useCallback(async () => {
-    if (!profile?.id) return;
-    try {
-      const [chairsData, queueData, allergiesData] = await Promise.all([
-        supabase.from('barber_chairs').select('*').eq('merchant_id', profile.id).order('created_at', { ascending: true }),
-        supabase.from('barber_queue').select('*').eq('merchant_id', profile.id).order('created_at', { ascending: true }),
-        supabase.from('barber_allergies').select('*').eq('merchant_id', profile.id).order('created_at', { ascending: false })
-      ]);
+  const [allergies, setAllergies] =
+    useState<any[]>([]);
 
-      let finalChairs = chairsData.data || [];
-      if (!chairsData.data || chairsData.data.length === 0) {
-        const defaultChairs = [
-          { barber_name: 'Stylist Rohit', customer_name: 'Vacant Chair', service: 'None', time_remaining: 0, status: 'Vacant' },
-          { barber_name: 'Stylist Vikram', customer_name: 'Vacant Chair', service: 'None', time_remaining: 0, status: 'Vacant' }
-        ].map(c => ({ ...c, merchant_id: profile.id }));
-        const seedRes = await supabase.from('barber_chairs').insert(defaultChairs).select();
-        if (seedRes.data) finalChairs = seedRes.data;
+  const [isLoading, setIsLoading] =
+    useState(true);
+
+  const [isRefreshing, setIsRefreshing] =
+    useState(false);
+
+  const [searchQuery, setSearchQuery] =
+    useState('');
+
+  // ====================================================
+  // WALK-IN
+  // ====================================================
+
+  const [newWalkinModal, setNewWalkinModal] =
+    useState(false);
+
+  const [newName, setNewName] =
+    useState('');
+
+  const [newHostel, setNewHostel] =
+    useState('');
+
+  const [newService, setNewService] =
+    useState('Haircut');
+
+  const [
+    newAllergyWarning,
+    setNewAllergyWarning,
+  ] = useState('');
+
+  // ====================================================
+  // BILLING
+  // ====================================================
+
+  const [settlingChair, setSettlingChair] =
+    useState<any | null>(null);
+
+  const [billingCombo, setBillingCombo] =
+    useState('Basic Cut');
+
+  const [billAmount, setBillAmount] =
+    useState('150');
+
+  // ====================================================
+  // FETCH DATA
+  // ====================================================
+
+  const fetchData = useCallback(
+    async () => {
+      if (!profile?.id) return;
+
+      try {
+        const [
+          chairsData,
+          queueData,
+          allergiesData,
+        ] = await Promise.all([
+          supabase
+            .from('barber_chairs')
+            .select('*')
+            .eq(
+              'merchant_id',
+              profile.id
+            ),
+
+          supabase
+            .from('barber_queue')
+            .select('*')
+            .eq(
+              'merchant_id',
+              profile.id
+            ),
+
+          supabase
+            .from('barber_allergies')
+            .select('*')
+            .eq(
+              'merchant_id',
+              profile.id
+            ),
+        ]);
+
+        // ========================================
+        // CHAIRS
+        // ========================================
+
+        let finalChairs =
+          chairsData.data || [];
+
+        if (finalChairs.length === 0) {
+          const defaultChairs = [
+            {
+              barber_name:
+                'Rohit',
+              customer_name:
+                'Vacant',
+              service: 'None',
+              time_remaining: 0,
+              status: 'Vacant',
+            },
+            {
+              barber_name:
+                'Vikram',
+              customer_name:
+                'Vacant',
+              service: 'None',
+              time_remaining: 0,
+              status: 'Vacant',
+            },
+          ].map(c => ({
+            ...c,
+            merchant_id:
+              profile.id,
+          }));
+
+          const seed =
+            await supabase
+              .from(
+                'barber_chairs'
+              )
+              .insert(
+                defaultChairs
+              )
+              .select();
+
+          finalChairs =
+            seed.data || [];
+        }
+
+        setChairs(
+          finalChairs.map(
+            (c: any) => ({
+              id: c.id,
+              barberName:
+                c.barber_name,
+              customerName:
+                c.customer_name,
+              service:
+                c.service,
+              timeRemaining:
+                c.time_remaining,
+              status:
+                c.status,
+            })
+          )
+        );
+
+        // ========================================
+        // QUEUE
+        // ========================================
+
+        let finalQueue =
+          queueData.data || [];
+
+        if (finalQueue.length === 0) {
+          const defaults = [
+            {
+              customer_name:
+                'Varun Sharma',
+              hostel:
+                'Hostel H-3',
+              service:
+                'Beard Trim',
+              phone:
+                '+91 9999988888',
+              status:
+                'Waiting',
+            },
+          ].map(q => ({
+            ...q,
+            merchant_id:
+              profile.id,
+          }));
+
+          const seed =
+            await supabase
+              .from(
+                'barber_queue'
+              )
+              .insert(defaults)
+              .select();
+
+          finalQueue =
+            seed.data || [];
+        }
+
+        setQueue(
+          finalQueue.map(
+            (q: any) => ({
+              id: q.id,
+              customerName:
+                q.customer_name,
+              hostel:
+                q.hostel,
+              service:
+                q.service,
+              phone:
+                q.phone,
+              status:
+                q.status,
+            })
+          )
+        );
+
+        // ========================================
+        // ALLERGIES
+        // ========================================
+
+        let finalAllergies =
+          allergiesData.data ||
+          [];
+
+        if (
+          finalAllergies.length ===
+          0
+        ) {
+          const defaults = [
+            {
+              customer_name:
+                'Rohan Singh',
+              warning:
+                'Sensitive to alcohol-based sprays.',
+              severity:
+                'High',
+              date: 'Today',
+            },
+          ].map(a => ({
+            ...a,
+            merchant_id:
+              profile.id,
+          }));
+
+          const seed =
+            await supabase
+              .from(
+                'barber_allergies'
+              )
+              .insert(defaults)
+              .select();
+
+          finalAllergies =
+            seed.data || [];
+        }
+
+        setAllergies(
+          finalAllergies.map(
+            (a: any) => ({
+              id: a.id,
+              customerName:
+                a.customer_name,
+              warning:
+                a.warning,
+              severity:
+                a.severity,
+              date: a.date,
+            })
+          )
+        );
+      } catch (e) {
+        console.log(e);
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
       }
-
-      const mappedChairs = finalChairs.map((row: any) => ({
-        id: row.id,
-        barberName: row.barber_name,
-        customerName: row.customer_name,
-        service: row.service,
-        timeRemaining: row.time_remaining,
-        status: row.status
-      }));
-      setChairs(mappedChairs);
-
-      let finalQueue = queueData.data || [];
-      if (!queueData.data || queueData.data.length === 0) {
-        const defaultQueue = [
-          { customer_name: 'Varun Sharma', hostel: 'Hostel H-3', service: 'Beard Trim', phone: '+919999888877', status: 'Waiting' },
-          { customer_name: 'Kartik Aaryan', hostel: 'Hostel H-1', service: 'Haircut + Styling', phone: '+919999888866', status: 'Waiting' }
-        ].map(q => ({ ...q, merchant_id: profile.id }));
-        const seedRes = await supabase.from('barber_queue').insert(defaultQueue).select();
-        if (seedRes.data) finalQueue = seedRes.data;
-      }
-
-      const mappedQueue = finalQueue.map((row: any) => ({
-        id: row.id,
-        customerName: row.customer_name,
-        hostel: row.hostel,
-        service: row.service,
-        phone: row.phone,
-        status: row.status
-      }));
-      setQueue(mappedQueue);
-
-      let finalAllergies = allergiesData.data || [];
-      if (!allergiesData.data || allergiesData.data.length === 0) {
-        const defaultAllergies = [
-          { customer_name: 'Varun Sharma', warning: 'Sensitive skin. Prone to razor burns.', severity: 'High Alert', date: 'Yesterday' }
-        ].map(a => ({ ...a, merchant_id: profile.id }));
-        const seedRes = await supabase.from('barber_allergies').insert(defaultAllergies).select();
-        if (seedRes.data) finalAllergies = seedRes.data;
-      }
-
-      const mappedAllergies = finalAllergies.map((row: any) => ({
-        id: row.id,
-        customerName: row.customer_name,
-        warning: row.warning,
-        severity: row.severity,
-        date: row.date
-      }));
-      setAllergies(mappedAllergies);
-
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [profile?.id]);
+    },
+    [profile?.id]
+  );
 
   useEffect(() => {
     fetchData();
@@ -148,503 +373,1236 @@ function BarberManagerScreenMerchant() {
     fetchData();
   };
 
-  const [searchQuery, setSearchQuery] = useState('');
+  // ====================================================
+  // ANALYTICS
+  // ====================================================
 
-  // Add Walk-in Modal Form states
-  const [newWalkinModal, setNewWalkinModal] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newHostel, setNewHostel] = useState('');
-  const [newService, setNewService] = useState('Haircut');
-  const [newAllergyWarning, setNewAllergyWarning] = useState('');
+  const occupiedChairs =
+    chairs.filter(
+      c => c.status === 'Occupied'
+    ).length;
 
-  // Settle Bill State
-  const [settlingChair, setSettlingChair] = useState<any | null>(null);
-  const [billingCombo, setBillingCombo] = useState('Basic Cut');
-  const [billAmount, setBillAmount] = useState('150');
+  const vacantChairs =
+    chairs.filter(
+      c => c.status === 'Vacant'
+    ).length;
 
-  // Settle billing
-  const handleSettleStylingDues = async () => {
-    if (!profile?.id || !settlingChair) return;
+  const estimatedRevenue =
+    occupiedChairs * 220;
 
-    const { error } = await supabase.from('barber_chairs').update({
-      customer_name: 'Vacant Chair',
-      service: 'None',
-      time_remaining: 0,
-      status: 'Vacant'
-    }).eq('id', settlingChair.id);
+  const averageWaitTime =
+    queue.length * 12;
 
-    if (error) {
-      Alert.alert('Error', error.message);
-      return;
-    }
+  const filteredQueue =
+    queue.filter(
+      q =>
+        q.customerName
+          .toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          ) ||
+        q.service
+          .toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          )
+    );
 
-    Alert.alert('Payment Cleared', `Setted ₹${billAmount} via UPI/Cash for ${settlingChair.customerName}.`);
-    setSettlingChair(null);
-    fetchData();
-  };
+  // ====================================================
+  // ACTIONS
+  // ====================================================
 
-  // Add Walkin Customer to Live Queue
-  const handleAddWalkin = async () => {
-    if (!newName) {
-      Alert.alert('Missing Name', 'Please enter customer name.');
-      return;
-    }
-    if (!profile?.id) return;
+  const handleAddWalkin =
+    async () => {
+      if (!newName.trim()) {
+        Alert.alert(
+          'Missing Name',
+          'Please enter customer name.'
+        );
 
-    const { error: queueError } = await supabase.from('barber_queue').insert([{
-      merchant_id: profile.id,
-      customer_name: newName,
-      hostel: newHostel || 'Walk-in Customer',
-      service: newService,
-      phone: '+91 99999 88888',
-      status: 'Waiting'
-    }]);
-
-    if (queueError) {
-      Alert.alert('Error', queueError.message);
-      return;
-    }
-
-    if (newAllergyWarning) {
-      const { error: allergyError } = await supabase.from('barber_allergies').insert([{
-        merchant_id: profile.id,
-        customer_name: newName,
-        warning: newAllergyWarning,
-        severity: 'High',
-        date: 'Today'
-      }]);
-      if (allergyError) {
-        console.error(allergyError);
+        return;
       }
-    }
 
-    Alert.alert('Queue Entry Added', `Added ${newName} to the waiting queue under ${newService}.`);
-    setNewName('');
-    setNewHostel('');
-    setNewService('Haircut');
-    setNewAllergyWarning('');
-    setNewWalkinModal(false);
-    fetchData();
-  };
+      const { error } =
+        await supabase
+          .from('barber_queue')
+          .insert([
+            {
+              merchant_id:
+                profile?.id,
+              customer_name:
+                newName,
+              hostel:
+                newHostel ||
+                'Walk-in',
+              service:
+                newService,
+              phone:
+                '+91 9999999999',
+              status:
+                'Waiting',
+            },
+          ]);
 
-  // Settle or call next in queue
-  const callNextInQueue = async (chairId: string) => {
-    if (!profile?.id) return;
-    if (queue.length === 0) {
-      Alert.alert('Queue Empty', 'No clients currently waiting in the lounge.');
-      return;
-    }
+      if (error) {
+        Alert.alert(
+          'Error',
+          error.message
+        );
 
-    const nextClient = queue[0];
+        return;
+      }
 
-    // Remove from queue
-    const { error: deleteError } = await supabase.from('barber_queue').delete().eq('id', nextClient.id);
-    if (deleteError) {
-      Alert.alert('Error', deleteError.message);
-      return;
-    }
+      if (
+        newAllergyWarning.trim()
+      ) {
+        await supabase
+          .from(
+            'barber_allergies'
+          )
+          .insert([
+            {
+              merchant_id:
+                profile?.id,
+              customer_name:
+                newName,
+              warning:
+                newAllergyWarning,
+              severity:
+                'High',
+              date: 'Today',
+            },
+          ]);
+      }
 
-    // Place on chair
-    const { error: chairError } = await supabase.from('barber_chairs').update({
-      customer_name: nextClient.customerName,
-      service: nextClient.service,
-      time_remaining: 20,
-      status: 'Occupied'
-    }).eq('id', chairId);
+      Alert.alert(
+        'Customer Added',
+        `${newName} added to queue.`
+      );
 
-    if (chairError) {
-      Alert.alert('Error', chairError.message);
-      return;
-    }
+      setNewName('');
+      setNewHostel('');
+      setNewService(
+        'Haircut'
+      );
+      setNewAllergyWarning(
+        ''
+      );
 
-    Alert.alert('Stylist Alerted', `Styled seat is now assigned to ${nextClient.customerName} for ${nextClient.service}.`);
-    fetchData();
-  };
+      setNewWalkinModal(
+        false
+      );
 
-  const handleCancelQueueSlot = async (id: string) => {
-    try {
-      const { error } = await supabase.from('barber_queue').delete().eq('id', id);
-      if (error) throw error;
       fetchData();
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
-  };
+    };
+
+  const callNextInQueue =
+    async (chairId: string) => {
+      if (queue.length === 0) {
+        Alert.alert(
+          'Queue Empty',
+          'No customers waiting.'
+        );
+
+        return;
+      }
+
+      const next =
+        queue[0];
+
+      await supabase
+        .from('barber_queue')
+        .delete()
+        .eq('id', next.id);
+
+      await supabase
+        .from('barber_chairs')
+        .update({
+          customer_name:
+            next.customerName,
+          service:
+            next.service,
+          time_remaining:
+            20,
+          status:
+            'Occupied',
+        })
+        .eq('id', chairId);
+
+      Alert.alert(
+        'Chair Assigned',
+        `${next.customerName} moved to chair.`
+      );
+
+      fetchData();
+    };
+
+  const handleSettleStylingDues =
+    async () => {
+      if (!settlingChair)
+        return;
+
+      await supabase
+        .from('barber_chairs')
+        .update({
+          customer_name:
+            'Vacant',
+          service:
+            'None',
+          time_remaining: 0,
+          status:
+            'Vacant',
+        })
+        .eq(
+          'id',
+          settlingChair.id
+        );
+
+      Alert.alert(
+        'Payment Complete',
+        `₹${billAmount} settled successfully.`
+      );
+
+      setSettlingChair(
+        null
+      );
+
+      fetchData();
+    };
+
+  // ====================================================
+  // UI
+  // ====================================================
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor:
+            colors.background,
+        },
+      ]}
+    >
       <StatusBar style="light" />
-      <Stack.Screen options={{ 
-        title: 'Barber & Salon Hub',
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.primary,
-        headerShown: true
-      }} />
 
-      {/* Tab Navigation */}
+      <Stack.Screen
+        options={{
+          title:
+            'Barber Operations',
+          headerStyle: {
+            backgroundColor:
+              colors.background,
+          },
+          headerTintColor:
+            colors.primary,
+        }}
+      />
 
-      <ScrollView 
-        showsVerticalScrollIndicator={false} 
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      <ScrollView
+        showsVerticalScrollIndicator={
+          false
+        }
+        contentContainerStyle={
+          styles.scrollContent
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              isRefreshing
+            }
+            onRefresh={
+              onRefresh
+            }
+            tintColor={
+              colors.primary
+            }
+          />
+        }
       >
         {isLoading ? (
-          <View style={{ padding: 40, alignItems: 'center' }}>
-            <ActivityIndicator size="large" color={colors.primary} />
+          <View
+            style={{
+              padding: 40,
+            }}
+          >
+            <ActivityIndicator
+              size="large"
+              color={
+                colors.primary
+              }
+            />
           </View>
         ) : (
           <>
-        {activeTab === 'queue' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Live Salon Queue & Seat Booking Desk</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Track live seat timers, call next waiting student clients, and dispatch dynamic billing.
-              </Text>
+            {/* ================================= */}
+            {/* HERO */}
+            {/* ================================= */}
+
+            <View
+              style={
+                styles.heroCard
+              }
+            >
+              <View
+                style={
+                  styles.heroTop
+                }
+              >
+                <View>
+                  <Text
+                    style={[
+                      styles.heroTitle,
+                      {
+                        color:
+                          colors.text,
+                      },
+                    ]}
+                  >
+                    Barber
+                    Operations
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.heroSubtitle,
+                      {
+                        color:
+                          colors.textMuted,
+                      },
+                    ]}
+                  >
+                    Queue,
+                    bookings,
+                    chairs,
+                    billing
+                    and safety
+                    monitoring.
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.liveBadge,
+                    {
+                      backgroundColor:
+                        colors.success +
+                        '20',
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.liveDot,
+                      {
+                        backgroundColor:
+                          colors.success,
+                      },
+                    ]}
+                  />
+
+                  <Text
+                    style={{
+                      color:
+                        colors.success,
+                      fontSize: 10,
+                      fontWeight:
+                        '800',
+                    }}
+                  >
+                    LIVE
+                  </Text>
+                </View>
+              </View>
             </View>
 
-            {/* Live Stylist Chairs Grid */}
-            <Text style={[styles.sectionTitleHeader, { color: colors.textMuted }]}>LIVE CHAIR STATUS</Text>
-            <View style={styles.chairsGrid}>
+            {/* ================================= */}
+            {/* ANALYTICS */}
+            {/* ================================= */}
+
+            <View
+              style={
+                styles.analyticsRow
+              }
+            >
+              {[
+                {
+                  label:
+                    'Occupied',
+                  value:
+                    occupiedChairs,
+                  icon:
+                    Users,
+                },
+                {
+                  label:
+                    'Waiting',
+                  value:
+                    queue.length,
+                  icon:
+                    Clock,
+                },
+                {
+                  label:
+                    'Revenue',
+                  value: `₹${estimatedRevenue}`,
+                  icon:
+                    TrendingUp,
+                },
+                {
+                  label:
+                    'Avg Wait',
+                  value: `${averageWaitTime}m`,
+                  icon:
+                    ArrowUpRight,
+                },
+              ].map(
+                (
+                  item,
+                  index
+                ) => {
+                  const Icon =
+                    item.icon;
+
+                  return (
+                    <GlassCard
+                      key={
+                        index
+                      }
+                      style={
+                        styles.analyticsCard
+                      }
+                    >
+                      <Icon
+                        size={
+                          18
+                        }
+                        color={
+                          colors.primary
+                        }
+                      />
+
+                      <Text
+                        style={[
+                          styles.analyticsValue,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        {
+                          item.value
+                        }
+                      </Text>
+
+                      <Text
+                        style={[
+                          styles.analyticsLabel,
+                          {
+                            color:
+                              colors.textMuted,
+                          },
+                        ]}
+                      >
+                        {
+                          item.label
+                        }
+                      </Text>
+                    </GlassCard>
+                  );
+                }
+              )}
+            </View>
+
+            {/* ================================= */}
+            {/* SEARCH */}
+            {/* ================================= */}
+
+            <View
+              style={[
+                styles.searchContainer,
+                {
+                  backgroundColor:
+                    colors.surface,
+                  borderColor:
+                    colors.border,
+                },
+              ]}
+            >
+              <Search
+                size={16}
+                color={
+                  colors.textMuted
+                }
+              />
+
+              <TextInput
+                placeholder="Search queue..."
+                placeholderTextColor={
+                  colors.textMuted
+                }
+                value={
+                  searchQuery
+                }
+                onChangeText={
+                  setSearchQuery
+                }
+                style={[
+                  styles.searchInput,
+                  {
+                    color:
+                      colors.text,
+                  },
+                ]}
+              />
+            </View>
+
+            {/* ================================= */}
+            {/* CHAIRS */}
+            {/* ================================= */}
+
+            <Text
+              style={[
+                styles.sectionTitle,
+                {
+                  color:
+                    colors.textMuted,
+                },
+              ]}
+            >
+              LIVE CHAIRS
+            </Text>
+
+            <View
+              style={
+                styles.chairsGrid
+              }
+            >
               {chairs.map(ch => (
-                <GlassCard key={ch.id} style={styles.chairCard}>
-                  <View style={styles.chairHeader}>
-                    <Scissors size={18} color={ch.status === 'Occupied' ? colors.primary : colors.textMuted} />
-                    <View style={[styles.miniStatusBadge, { backgroundColor: ch.status === 'Occupied' ? colors.primary + '20' : colors.border }]}>
-                      <Text style={{ fontSize: 9, color: ch.status === 'Occupied' ? colors.primary : colors.textMuted, fontWeight: '900' }}>
-                        {ch.status.toUpperCase()}
+                <GlassCard
+                  key={ch.id}
+                  style={
+                    styles.chairCard
+                  }
+                >
+                  <View
+                    style={
+                      styles.chairHeader
+                    }
+                  >
+                    <Scissors
+                      size={
+                        18
+                      }
+                      color={
+                        ch.status ===
+                        'Occupied'
+                          ? colors.primary
+                          : colors.textMuted
+                      }
+                    />
+
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        {
+                          backgroundColor:
+                            ch.status ===
+                            'Occupied'
+                              ? colors.primary +
+                                '20'
+                              : colors.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            ch.status ===
+                            'Occupied'
+                              ? colors.primary
+                              : colors.textMuted,
+
+                          fontSize: 9,
+                          fontWeight:
+                            '900',
+                        }}
+                      >
+                        {
+                          ch.status
+                        }
                       </Text>
                     </View>
                   </View>
 
-                  <Text style={[styles.barberName, { color: colors.textMuted }]}>{ch.barberName}</Text>
-                  <Text style={[styles.clientName, { color: colors.text }]}>{ch.customerName}</Text>
-                  {ch.status === 'Occupied' && (
-                    <View>
-                      <Text style={{ fontSize: 10, color: colors.primary, fontWeight: '700', marginTop: 4 }}>
-                        {ch.service}
-                      </Text>
-                      <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>
-                         {ch.timeRemaining} mins remaining
-                      </Text>
-                      
-                      <TouchableOpacity 
-                        style={[styles.smallSettleBtn, { backgroundColor: colors.success + '20', borderColor: colors.success }]}
-                        onPress={() => setSettlingChair(ch)}
-                      >
-                        <Text style={{ color: colors.success, fontSize: 10, fontWeight: '800' }}>Settle Bill & Vacate </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                  <Text
+                    style={[
+                      styles.barberName,
+                      {
+                        color:
+                          colors.textMuted,
+                      },
+                    ]}
+                  >
+                    {
+                      ch.barberName
+                    }
+                  </Text>
 
-                  {ch.status === 'Vacant' && (
-                    <TouchableOpacity 
-                      style={[styles.callNextBtn, { backgroundColor: colors.primary }]}
-                      onPress={() => callNextInQueue(ch.id)}
+                  <Text
+                    style={[
+                      styles.clientName,
+                      {
+                        color:
+                          colors.text,
+                      },
+                    ]}
+                  >
+                    {
+                      ch.customerName
+                    }
+                  </Text>
+
+                  <View
+                    style={
+                      styles.chairFooter
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.chairMeta,
+                        {
+                          color:
+                            colors.textMuted,
+                        },
+                      ]}
                     >
-                      <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>Call Next waiting </Text>
+                      ETA{' '}
+                      {
+                        ch.timeRemaining
+                      }
+                      m
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.chairMeta,
+                        {
+                          color:
+                            colors.success,
+                        },
+                      ]}
+                    >
+                      ₹220
+                    </Text>
+                  </View>
+
+                  {ch.status ===
+                  'Vacant' ? (
+                    <TouchableOpacity
+                      style={[
+                        styles.primaryBtn,
+                        {
+                          backgroundColor:
+                            colors.primary,
+                        },
+                      ]}
+                      onPress={() =>
+                        callNextInQueue(
+                          ch.id
+                        )
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.primaryBtnText
+                        }
+                      >
+                        Call
+                        Next
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[
+                        styles.secondaryBtn,
+                        {
+                          borderColor:
+                            colors.success,
+                        },
+                      ]}
+                      onPress={() =>
+                        setSettlingChair(
+                          ch
+                        )
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.secondaryBtnText,
+                          {
+                            color:
+                              colors.success,
+                          },
+                        ]}
+                      >
+                        Complete
+                        Service
+                      </Text>
                     </TouchableOpacity>
                   )}
                 </GlassCard>
               ))}
             </View>
 
-            {/* Settle Bill modal card */}
+            {/* ================================= */}
+            {/* BILLING */}
+            {/* ================================= */}
+
             {settlingChair && (
-              <GlassCard style={styles.billFormCard}>
-                <View style={styles.formHeaderRow}>
-                  <QrCode size={18} color={colors.primary} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>Settle Bill: {settlingChair.customerName}</Text>
-                  <TouchableOpacity onPress={() => setSettlingChair(null)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Cancel</Text>
+              <GlassCard
+                style={
+                  styles.billCard
+                }
+              >
+                <View
+                  style={
+                    styles.billHeader
+                  }
+                >
+                  <View
+                    style={{
+                      flexDirection:
+                        'row',
+                      alignItems:
+                        'center',
+                    }}
+                  >
+                    <QrCode
+                      size={
+                        18
+                      }
+                      color={
+                        colors.primary
+                      }
+                    />
+
+                    <Text
+                      style={[
+                        styles.billTitle,
+                        {
+                          color:
+                            colors.text,
+                        },
+                      ]}
+                    >
+                      Billing
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() =>
+                      setSettlingChair(
+                        null
+                      )
+                    }
+                  >
+                    <Text
+                      style={{
+                        color:
+                          colors.error,
+                        fontWeight:
+                          '700',
+                      }}
+                    >
+                      Close
+                    </Text>
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.inlineInputsGrid}>
-                  <View style={{ flex: 2, marginRight: 8 }}>
-                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Choose Combo / Package</Text>
-                    <View style={styles.selectBoxArea}>
-                      {['Basic Cut (₹150)', 'Combo Pack (₹250)', 'Hair Color (₹450)'].map(c => (
-                        <TouchableOpacity
-                          key={c}
-                          style={[
-                            styles.smallSelectChip,
-                            { backgroundColor: colors.surface, borderColor: colors.border },
-                            billingCombo === c && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
-                          ]}
-                          onPress={() => {
-                            setBillingCombo(c);
-                            if (c.includes('150')) setBillAmount('150');
-                            else if (c.includes('250')) setBillAmount('255');
-                            else setBillAmount('450');
-                          }}
-                        >
-                          <Text style={{ fontSize: 9, color: billingCombo === c ? colors.primary : colors.textMuted }}>{c}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                  
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Final Price (₹)</Text>
-                    <TextInput
-                      style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                      value={billAmount}
-                      onChangeText={setBillAmount}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                </View>
+                <TextInput
+                  value={
+                    billAmount
+                  }
+                  onChangeText={
+                    setBillAmount
+                  }
+                  keyboardType="numeric"
+                  placeholder="Amount"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                    },
+                  ]}
+                />
 
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.success }]}
-                  onPress={handleSettleStylingDues}
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor:
+                        colors.success,
+                    },
+                  ]}
+                  onPress={
+                    handleSettleStylingDues
+                  }
                 >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Confirm Payment & Settle Seat</Text>
+                  <Text
+                    style={
+                      styles.primaryBtnText
+                    }
+                  >
+                    Confirm
+                    Payment
+                  </Text>
                 </TouchableOpacity>
               </GlassCard>
             )}
 
-            {/* Waiting list row header */}
-            <View style={styles.queueHeaderRow}>
-              <Text style={[styles.sectionTitleHeader, { color: colors.textMuted, marginVertical: 0 }]}>WAITING QUEUE DESK</Text>
-              <TouchableOpacity 
-                style={[styles.miniAddBtn, { backgroundColor: colors.primary }]}
-                onPress={() => setNewWalkinModal(!newWalkinModal)}
+            {/* ================================= */}
+            {/* ADD WALK-IN */}
+            {/* ================================= */}
+
+            <View
+              style={
+                styles.queueHeader
+              }
+            >
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  {
+                    color:
+                      colors.textMuted,
+                  },
+                ]}
               >
-                <Plus size={14} color="#FFF" style={{ marginRight: 4 }} />
-                <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>Add Walk-in</Text>
+                WAITING
+                QUEUE
+              </Text>
+
+              <TouchableOpacity
+                style={[
+                  styles.addBtn,
+                  {
+                    backgroundColor:
+                      colors.primary,
+                  },
+                ]}
+                onPress={() =>
+                  setNewWalkinModal(
+                    !newWalkinModal
+                  )
+                }
+              >
+                <Plus
+                  size={14}
+                  color="#FFF"
+                />
+
+                <Text
+                  style={
+                    styles.addBtnText
+                  }
+                >
+                  Walk-in
+                </Text>
               </TouchableOpacity>
             </View>
 
-            {/* Walkin customer registration form */}
             {newWalkinModal && (
-              <GlassCard style={styles.modalFormCard}>
-                <View style={styles.formHeaderRow}>
-                  <Sparkles size={16} color={colors.primary} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>Add Student Walk-in</Text>
-                  <TouchableOpacity onPress={() => setNewWalkinModal(false)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Close</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <TextInput
-                  placeholder="Student Full Name"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newName}
-                  onChangeText={setNewName}
-                />
-
-                <TextInput
-                  placeholder="Hostel / Room (e.g. PG Residency Rm 12)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newHostel}
-                  onChangeText={setNewHostel}
-                />
-
-                <TextInput
-                  placeholder="Styling Requirement (e.g. Low fade cut, shave)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newService}
-                  onChangeText={setNewService}
-                />
-
-                <TextInput
-                  placeholder="Allergy / Skin Warnings (optional)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newAllergyWarning}
-                  onChangeText={setNewAllergyWarning}
-                />
-
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-                  onPress={handleAddWalkin}
+              <GlassCard
+                style={
+                  styles.modalCard
+                }
+              >
+                <Text
+                  style={[
+                    styles.modalTitle,
+                    {
+                      color:
+                        colors.text,
+                    },
+                  ]}
                 >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Confirm Queue Slot</Text>
+                  Add Walk-in
+                </Text>
+
+                <TextInput
+                  placeholder="Customer Name"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  value={
+                    newName
+                  }
+                  onChangeText={
+                    setNewName
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                    },
+                  ]}
+                />
+
+                <TextInput
+                  placeholder="Hostel / Address"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  value={
+                    newHostel
+                  }
+                  onChangeText={
+                    setNewHostel
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                    },
+                  ]}
+                />
+
+                <TextInput
+                  placeholder="Service"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  value={
+                    newService
+                  }
+                  onChangeText={
+                    setNewService
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                    },
+                  ]}
+                />
+
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor:
+                        colors.primary,
+                    },
+                  ]}
+                  onPress={
+                    handleAddWalkin
+                  }
+                >
+                  <Text
+                    style={
+                      styles.primaryBtnText
+                    }
+                  >
+                    Add To
+                    Queue
+                  </Text>
                 </TouchableOpacity>
               </GlassCard>
             )}
 
-            {/* Live Queue Cards */}
-            {queue.map((qu, idx) => (
-              <GlassCard key={qu.id} style={styles.queueCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={[styles.queueIndexBadge, { backgroundColor: colors.surface }]}>
-                    <Text style={{ color: colors.primary, fontWeight: '900' }}>#{idx + 1}</Text>
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{qu.customerName}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}> {qu.hostel}</Text>
-                  </View>
-                  
-                  <View style={[styles.statusBadge, { backgroundColor: colors.accent + '20' }]}>
-                    <Text style={{ fontSize: 9, color: colors.accent, fontWeight: '900' }}>{qu.service.toUpperCase()}</Text>
-                  </View>
-                </View>
+            {/* ================================= */}
+            {/* QUEUE */}
+            {/* ================================= */}
 
-                {/* Queue buttons */}
-                <View style={[styles.queueActions, { borderTopColor: colors.border }]}>
-                  <TouchableOpacity 
-                    style={[styles.miniActionBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Share.share({ message: `Hi ${qu.customerName}, your turn is approaching at Royal Cut Barber. Please reach the salon desk in 5 mins!` })}
-                  >
-                    <Share2 size={13} color={colors.text} style={{ marginRight: 4 }} />
-                    <Text style={{ color: colors.text, fontSize: 10, fontWeight: '700' }}>Alert Customer</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={[styles.miniActionBtn, { backgroundColor: colors.error + '12' }]}
-                    onPress={() => handleCancelQueueSlot(qu.id)}
-                  >
-                    <Text style={{ color: colors.error, fontSize: 10, fontWeight: '700' }}>Cancel Slot</Text>
-                  </TouchableOpacity>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
-        )}
+            {filteredQueue.length ===
+              0 && (
+              <GlassCard
+                style={
+                  styles.emptyCard
+                }
+              >
+                <Users
+                  size={36}
+                  color={
+                    colors.textMuted
+                  }
+                />
 
-        {activeTab === 'allergies' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Hair Dye & Skin Cosmetic Allergy Ledger</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Cross-verify chemical sensitivities before applying hair styling gel, ammonia dyes, or alcohol-based sprays. Avoid post-shave claims.
-              </Text>
-            </View>
-
-            {allergies.map(al => (
-              <GlassCard key={al.id} style={styles.allergyCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{al.customerName}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Logged: {al.date}</Text>
-                  </View>
-                  
-                  <View style={[
-                    styles.severityBadge, 
-                    al.severity === 'High' ? { backgroundColor: colors.error + '20' } : { backgroundColor: colors.accent + '20' }
-                  ]}>
-                    <ShieldAlert size={12} color={al.severity === 'High' ? colors.error : colors.accent} style={{ marginRight: 4 }} />
-                    <Text style={{ fontSize: 9, color: al.severity === 'High' ? colors.error : colors.accent, fontWeight: '900' }}>
-                      {al.severity.toUpperCase()} RISK
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={[styles.allergyWarningPanel, { borderTopColor: colors.border }]}>
-                  <Text style={[styles.warningInstructionText, { color: colors.text }]}>
-                    Styling Constraint: {al.warning}
-                  </Text>
-                </View>
-
-                <TouchableOpacity 
-                  style={[styles.verifiedAllergyBtn, { backgroundColor: colors.success + '15', borderColor: colors.success }]}
-                  onPress={() => Alert.alert('Allergy Cleared', `Verified ${al.customerName}'s sensitive skin log. Styles alerted.`)}
+                <Text
+                  style={[
+                    styles.emptyTitle,
+                    {
+                      color:
+                        colors.text,
+                    },
+                  ]}
                 >
-                  <CheckCircle2 size={13} color={colors.success} style={{ marginRight: 4 }} />
-                  <Text style={{ color: colors.success, fontSize: 10, fontWeight: '800' }}>Confirm Styling Protection Active</Text>
-                </TouchableOpacity>
+                  Queue Empty
+                </Text>
+
+                <Text
+                  style={[
+                    styles.emptySub,
+                    {
+                      color:
+                        colors.textMuted,
+                    },
+                  ]}
+                >
+                  Walk-ins
+                  will appear
+                  here.
+                </Text>
               </GlassCard>
-            ))}
-          </View>
-        )}
+            )}
 
-        {activeTab === 'appointments' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Pre-booked Haircut Appointment Slots</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Coordinated advance slot requests pre-booked by student cards from the hostels.
-              </Text>
-            </View>
-
-            {[
-              { id: 'ap1', name: 'Rohan Sharma', room: 'Hostel B - Rm 302', slot: '11:00 AM - 11:30 AM', type: 'Hair Wash + Blow Dry' },
-              { id: 'ap2', name: 'Vikram Grover', room: 'Hostel C - Rm 11', slot: '04:30 PM - 05:00 PM', type: 'Beard Trim + Shave' }
-            ].map(ap => (
-              <GlassCard key={ap.id} style={styles.scheduleCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{ap.name}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Requirement:  {ap.type} ({ap.room})</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: colors.primary + '20' }]}>
-                    <Text style={{ fontSize: 9, color: colors.primary, fontWeight: '900' }}>{ap.slot}</Text>
-                  </View>
-                </View>
-                
-                <View style={[styles.scheduleFooter, { borderTopColor: colors.border }]}>
-                  <Text style={{ fontSize: 11, color: colors.textMuted }}>Coordination Desk: Seat Reserved</Text>
-                  <TouchableOpacity 
-                    style={[styles.scheduleBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={async () => {
-                      if (!profile?.id) return;
-                      const vacantChair = chairs.find(ch => ch.status === 'Vacant');
-                      if (!vacantChair) {
-                        Alert.alert('No Vacant Chair', 'Please wait or free up a stylist seat first.');
-                        return;
-                      }
-
-                      const { error } = await supabase.from('barber_chairs').update({
-                        customer_name: ap.name,
-                        service: ap.type,
-                        time_remaining: 30,
-                        status: 'Occupied'
-                      }).eq('id', vacantChair.id);
-
-                      if (error) {
-                        Alert.alert('Error', error.message);
-                        return;
-                      }
-
-                      Alert.alert('Customer Seated', `Reserved seat has been assigned to walk-in ${ap.name}.`);
-                      fetchData();
-                    }}
+            {filteredQueue.map(
+              (qu, idx) => (
+                <GlassCard
+                  key={qu.id}
+                  style={
+                    styles.queueCard
+                  }
+                >
+                  <View
+                    style={
+                      styles.queueTop
+                    }
                   >
-                    <Text style={{ color: colors.text, fontSize: 10, fontWeight: '700' }}>Seat Customer Now</Text>
-                  </TouchableOpacity>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
-        )}
+                    <View
+                      style={
+                        styles.queueIndex
+                      }
+                    >
+                      <Text
+                        style={{
+                          color:
+                            colors.primary,
+                          fontWeight:
+                            '900',
+                        }}
+                      >
+                        #
+                        {idx +
+                          1}
+                      </Text>
+                    </View>
 
-        </>
+                    <View
+                      style={{
+                        flex: 1,
+                        marginLeft: 12,
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.customerName,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        {
+                          qu.customerName
+                        }
+                      </Text>
+
+                      <Text
+                        style={{
+                          color:
+                            colors.textMuted,
+                          fontSize: 11,
+                        }}
+                      >
+                        {
+                          qu.hostel
+                        }
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.serviceBadge,
+                        {
+                          backgroundColor:
+                            colors.accent +
+                            '20',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            colors.accent,
+                          fontSize: 9,
+                          fontWeight:
+                            '900',
+                        }}
+                      >
+                        {
+                          qu.service
+                        }
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.queueActions,
+                      {
+                        borderTopColor:
+                          colors.border,
+                      },
+                    ]}
+                  >
+                    <TouchableOpacity
+                      style={[
+                        styles.queueBtn,
+                        {
+                          backgroundColor:
+                            colors.surface,
+                        },
+                      ]}
+                      onPress={() =>
+                        Share.share(
+                          {
+                            message: `Hi ${qu.customerName}, your turn is near. Please reach the salon.`,
+                          }
+                        )
+                      }
+                    >
+                      <Share2
+                        size={
+                          13
+                        }
+                        color={
+                          colors.text
+                        }
+                      />
+
+                      <Text
+                        style={[
+                          styles.queueBtnText,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        Notify
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </GlassCard>
+              )
+            )}
+
+            <View
+              style={{
+                height: 120,
+              }}
+            />
+          </>
         )}
-        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Floating Bottom Navigation */}
-      <View style={[
-        styles.bottomTabBar, 
-        { 
-          backgroundColor: colors.surface + 'E8', 
-          borderColor: colors.border,
-          shadowColor: colors.primary,
-        }
-      ]}>
+      {/* ===================================== */}
+      {/* BOTTOM NAV */}
+      {/* ===================================== */}
+
+      <View
+        style={[
+          styles.bottomTabBar,
+          {
+            backgroundColor:
+              colors.surface +
+              'E8',
+            borderColor:
+              colors.border,
+          },
+        ]}
+      >
         {[
-            { id: 'queue', label: 'Seat Desk & Queue', icon: Users },
-            { id: 'allergies', label: 'Cosmetic Allergies', icon: AlertTriangle },
-            { id: 'appointments', label: 'Slots Planner', icon: Clock },
-          ].map(tab => {
-          const isActive = activeTab === tab.id;
-          const Icon = tab.icon;
+          {
+            id: 'queue',
+            label: 'Queue',
+            icon: Users,
+          },
+          {
+            id: 'allergies',
+            label: 'Safety',
+            icon:
+              AlertTriangle,
+          },
+          {
+            id: 'appointments',
+            label: 'Bookings',
+            icon: Clock,
+          },
+        ].map(tab => {
+          const Icon =
+            tab.icon;
+
+          const isActive =
+            activeTab ===
+            tab.id;
+
           return (
             <TouchableOpacity
               key={tab.id}
-              style={[styles.bottomTabBtn, isActive && { backgroundColor: colors.primary + '18' }]}
-              onPress={() => setActiveTab(tab.id as any)}
+              style={[
+                styles.bottomTabBtn,
+                isActive && {
+                  backgroundColor:
+                    colors.primary +
+                    '18',
+                },
+              ]}
+              onPress={() =>
+                setActiveTab(
+                  tab.id as any
+                )
+              }
             >
-              <View style={[styles.bottomTabIndicator, isActive && { backgroundColor: colors.primary }]} />
-              <Icon size={20} color={isActive ? colors.primary : colors.textMuted} />
-              <Text style={[styles.bottomTabLabel, { color: isActive ? colors.primary : colors.textMuted }]}>
-                {tab.label.trim()}
+              <Icon
+                size={20}
+                color={
+                  isActive
+                    ? colors.primary
+                    : colors.textMuted
+                }
+              />
+
+              <Text
+                style={[
+                  styles.bottomLabel,
+                  {
+                    color:
+                      isActive
+                        ? colors.primary
+                        : colors.textMuted,
+                  },
+                ]}
+              >
+                {tab.label}
               </Text>
             </TouchableOpacity>
           );
@@ -652,314 +1610,408 @@ function BarberManagerScreenMerchant() {
       </View>
     </View>
   );
-
 }
 
+// ======================================================
+// STYLES
+// ======================================================
 
-const styles: any = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: 8,
-  },
-  tabBarContainer: {
-    height: 48,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-  },
-  tabsScroll: {
-    paddingHorizontal: Spacing.md,
-    alignItems: 'center',
-    gap: 8,
-  },
-  tabBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  tabIcon: {
-    marginRight: 4,
-  },
-  tabLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  scrollContent: {
-    padding: Spacing.md,
-  },
-  introHeader: {
-    marginBottom: 16,
-  },
-  introTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  introSub: {
-    fontSize: 12,
-    marginTop: 4,
-    lineHeight: 16,
-  },
-  sectionTitleHeader: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.textMuted,
-    letterSpacing: 0.5,
-    marginVertical: 10,
-  },
-  chairsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 20,
-  },
-  chairCard: {
-    flex: 1,
-    minWidth: '45%',
-    padding: 12,
-    borderRadius: 16,
-  },
-  chairHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  miniStatusBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 4,
-  },
-  barberName: {
-    fontSize: 9,
-    fontWeight: '600',
-  },
-  clientName: {
-    fontSize: 14,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  smallSettleBtn: {
-    height: 26,
-    borderWidth: 1,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  callNextBtn: {
-    height: 26,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 14,
-  },
-  billFormCard: {
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-  },
-  formHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  formTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    flex: 1,
-    marginLeft: 6,
-  },
-  inlineInputsGrid: {
-    flexDirection: 'row',
-    marginBottom: 10,
-  },
-  inputLabel: {
-    fontSize: 10,
-    marginBottom: 2,
-    fontWeight: '700',
-  },
-  selectBoxArea: {
-    flexDirection: 'row',
-    gap: 4,
-    height: 40,
-  },
-  smallSelectChip: {
-    flex: 1,
-    height: 36,
-    borderWidth: 1,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  formInput: {
-    height: 40,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    fontSize: 13,
-    marginBottom: 10,
-    backgroundColor: 'rgba(255,255,255,0.01)',
-  },
-  submitBtn: {
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  queueHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  miniAddBtn: {
-    flexDirection: 'row',
-    paddingHorizontal: 10,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  modalFormCard: {
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-  },
-  queueCard: {
-    padding: 12,
-    marginBottom: 8,
-    borderRadius: 16,
-  },
-  subCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  queueIndexBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  studentNameText: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  queueActions: {
-    borderTopWidth: 1,
-    paddingTop: 8,
-    marginTop: 8,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 8,
-  },
-  miniActionBtn: {
-    flexDirection: 'row',
-    paddingHorizontal: 10,
-    height: 26,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  allergyCard: {
-    padding: 14,
-    marginBottom: 12,
-    borderRadius: 16,
-  },
-  severityBadge: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  allergyWarningPanel: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 6,
-    marginBottom: 10,
-  },
-  warningInstructionText: {
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  verifiedAllergyBtn: {
-    height: 30,
-    borderRadius: 6,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
-  },
-  scheduleCard: {
-    padding: 14,
-    marginBottom: 12,
-    borderRadius: 16,
-  },
-  scheduleFooter: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 6,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  scheduleBtn: {
-    paddingHorizontal: 12,
-    height: 28,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bottomTabBar: {
-    position: 'absolute',
-    bottom: 20,
-    left: 16,
-    right: 16,
-    height: 72,
-    borderRadius: 22,
-    borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 6,
-    elevation: 12,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-  },
-  bottomTabBtn: {
-    flex: 1,
-    height: 56,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 3,
-  },
-  bottomTabIndicator: {
-    width: 16,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: 'transparent',
-    marginBottom: 2,
-  },
-  bottomTabLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: 0.2,
-  },
-});
+const styles: any =
+  StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+
+    scrollContent: {
+      padding:
+        Spacing.md,
+    },
+
+    heroCard: {
+      marginBottom: 18,
+    },
+
+    heroTop: {
+      flexDirection:
+        'row',
+      justifyContent:
+        'space-between',
+    },
+
+    heroTitle: {
+      fontSize: 26,
+      fontWeight:
+        '900',
+    },
+
+    heroSubtitle: {
+      fontSize: 13,
+      marginTop: 6,
+      lineHeight: 18,
+      maxWidth: '85%',
+    },
+
+    liveBadge: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      height: 30,
+    },
+
+    liveDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      marginRight: 6,
+    },
+
+    analyticsRow: {
+      flexDirection:
+        'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginBottom: 18,
+    },
+
+    analyticsCard: {
+      width: '47%',
+      padding: 14,
+      borderRadius: 18,
+    },
+
+    analyticsValue: {
+      fontSize: 20,
+      fontWeight:
+        '900',
+      marginTop: 10,
+    },
+
+    analyticsLabel: {
+      fontSize: 11,
+      marginTop: 4,
+      fontWeight:
+        '700',
+    },
+
+    searchContainer: {
+      height: 48,
+      borderRadius: 14,
+      borderWidth: 1,
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      paddingHorizontal: 12,
+      marginBottom: 16,
+    },
+
+    searchInput: {
+      flex: 1,
+      marginLeft: 8,
+      fontSize: 13,
+      fontWeight:
+        '600',
+    },
+
+    sectionTitle: {
+      fontSize: 11,
+      fontWeight:
+        '800',
+      letterSpacing: 1,
+      marginBottom: 12,
+    },
+
+    chairsGrid: {
+      flexDirection:
+        'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginBottom: 20,
+    },
+
+    chairCard: {
+      width: '47%',
+      padding: 14,
+      borderRadius: 18,
+    },
+
+    chairHeader: {
+      flexDirection:
+        'row',
+      justifyContent:
+        'space-between',
+      marginBottom: 10,
+    },
+
+    statusBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 999,
+    },
+
+    barberName: {
+      fontSize: 10,
+      fontWeight:
+        '700',
+    },
+
+    clientName: {
+      fontSize: 15,
+      fontWeight:
+        '900',
+      marginTop: 4,
+    },
+
+    chairFooter: {
+      flexDirection:
+        'row',
+      justifyContent:
+        'space-between',
+      marginTop: 10,
+      marginBottom: 12,
+    },
+
+    chairMeta: {
+      fontSize: 10,
+      fontWeight:
+        '700',
+    },
+
+    primaryBtn: {
+      height: 34,
+      borderRadius: 10,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    secondaryBtn: {
+      height: 34,
+      borderRadius: 10,
+      borderWidth: 1,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    primaryBtnText: {
+      color: '#FFF',
+      fontSize: 12,
+      fontWeight:
+        '800',
+    },
+
+    secondaryBtnText: {
+      fontSize: 12,
+      fontWeight:
+        '800',
+    },
+
+    billCard: {
+      padding: 16,
+      borderRadius: 18,
+      marginBottom: 20,
+    },
+
+    billHeader: {
+      flexDirection:
+        'row',
+      justifyContent:
+        'space-between',
+      alignItems:
+        'center',
+      marginBottom: 14,
+    },
+
+    billTitle: {
+      fontSize: 15,
+      fontWeight:
+        '800',
+      marginLeft: 8,
+    },
+
+    formInput: {
+      height: 46,
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      marginBottom: 12,
+      fontSize: 13,
+    },
+
+    submitBtn: {
+      height: 44,
+      borderRadius: 12,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    queueHeader: {
+      flexDirection:
+        'row',
+      justifyContent:
+        'space-between',
+      alignItems:
+        'center',
+      marginBottom: 14,
+    },
+
+    addBtn: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      height: 32,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+    },
+
+    addBtnText: {
+      color: '#FFF',
+      fontSize: 11,
+      fontWeight:
+        '800',
+      marginLeft: 4,
+    },
+
+    modalCard: {
+      padding: 16,
+      borderRadius: 18,
+      marginBottom: 18,
+    },
+
+    modalTitle: {
+      fontSize: 15,
+      fontWeight:
+        '800',
+      marginBottom: 14,
+    },
+
+    queueCard: {
+      padding: 14,
+      borderRadius: 18,
+      marginBottom: 10,
+    },
+
+    queueTop: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+    },
+
+    queueIndex: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+      backgroundColor:
+        'rgba(255,255,255,0.05)',
+    },
+
+    customerName: {
+      fontSize: 14,
+      fontWeight:
+        '800',
+    },
+
+    serviceBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+    },
+
+    queueActions: {
+      marginTop: 12,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      flexDirection:
+        'row',
+      justifyContent:
+        'flex-end',
+    },
+
+    queueBtn: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      paddingHorizontal: 12,
+      height: 32,
+      borderRadius: 10,
+    },
+
+    queueBtnText: {
+      marginLeft: 6,
+      fontSize: 11,
+      fontWeight:
+        '700',
+    },
+
+    emptyCard: {
+      padding: 30,
+      borderRadius: 20,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    emptyTitle: {
+      fontSize: 16,
+      fontWeight:
+        '800',
+      marginTop: 10,
+    },
+
+    emptySub: {
+      fontSize: 12,
+      marginTop: 4,
+    },
+
+    bottomTabBar: {
+      position:
+        'absolute',
+      bottom: 12,
+      left: 16,
+      right: 16,
+      height: 62,
+      borderRadius: 22,
+      borderWidth: 1,
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      justifyContent:
+        'space-around',
+      paddingHorizontal: 6,
+    },
+
+    bottomTabBtn: {
+      flex: 1,
+      height: 48,
+      borderRadius: 14,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    bottomLabel: {
+      fontSize: 10,
+      fontWeight:
+        '800',
+      marginTop: 4,
+    },
+  });

@@ -1,33 +1,48 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Image, TextInput, Alert, Dimensions, RefreshControl } from 'react-native';
+// HostelManagerScreen.tsx
+
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  TextInput,
+  Alert,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
+
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
-import { 
-  Building, 
-  Users, 
-  CreditCard, 
+
+import {
+  Building,
+  Users,
+  CreditCard,
   AlertTriangle,
-  ChevronRight,
   Plus,
   Home,
   CheckCircle,
-  Clock,
   Key,
-  Calendar,
   Shield,
-  Trash2,
   Lock,
-  ArrowUpRight
+  ArrowUpRight,
+  Search,
+  Phone,
+  Trash2,
+  UserPlus,
+  Clock3,
 } from 'lucide-react-native';
-import { Colors, Spacing, Typography } from '@/constants/Theme';
+
+import { Spacing } from '@/constants/Theme';
 import { GlassCard } from '@/components/GlassCard';
 import { useApp } from '@/lib/AppContext';
 import { supabase } from '@/lib/supabase';
 import { CustomerBusinessView } from '@/components/CustomerBusinessView';
 
-const { width } = Dimensions.get('window');
-
-interface StudentResident {
+interface Resident {
   id: string;
   name: string;
   room: string;
@@ -35,6 +50,7 @@ interface StudentResident {
   status: 'Paid' | 'Overdue' | 'Vacating';
   image: string;
   college: string;
+  phone?: string;
 }
 
 interface GatePass {
@@ -48,90 +64,100 @@ interface GatePass {
 
 export default function HostelManagerScreen() {
   const { userRole, businessType } = useApp();
-  
+
   if (userRole === 'customer' || businessType !== 'Hostel') {
     return <CustomerBusinessView type="Hostel" />;
   }
 
-  return <HostelManagerScreenMerchant />;
+  return <HostelManagerMerchant />;
 }
 
-function HostelManagerScreenMerchant() {
+function HostelManagerMerchant() {
+  const { colors, theme, profile } = useApp();
 
-  const { colors, theme, profile, userRole, businessType } = useApp();
-  
-  
-  
-  // Dynamic Supabase State
-  const [residents, setResidents] = useState<any[]>([]);
-  const [gatePasses, setGatePasses] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<
+    'residents' | 'gatepass' | 'maintenance'
+  >('residents');
+
+  const [residents, setResidents] = useState<Resident[]>([]);
+  const [gatePasses, setGatePasses] = useState<GatePass[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [search, setSearch] = useState('');
+  const [residentFilter, setResidentFilter] = useState<
+    'All' | 'Paid' | 'Overdue'
+  >('All');
+
+  const [showAddResident, setShowAddResident] = useState(false);
+
+  const [newResident, setNewResident] = useState({
+    name: '',
+    room: '',
+    due: '',
+    college: '',
+    phone: '',
+  });
 
   const fetchData = useCallback(async () => {
     if (!profile?.id) return;
+
     try {
-      const [resData, passData] = await Promise.all([
-        supabase.from('hostel_residents').select('*').eq('merchant_id', profile.id).order('created_at', { ascending: false }),
-        supabase.from('hostel_gate_passes').select('*, resident:hostel_residents(student_name, room_number)').eq('merchant_id', profile.id).order('created_at', { ascending: false })
+      const [residentRes, passRes] = await Promise.all([
+        supabase
+          .from('hostel_residents')
+          .select('*')
+          .eq('merchant_id', profile.id)
+          .order('created_at', { ascending: false }),
+
+        supabase
+          .from('hostel_gate_passes')
+          .select(
+            `
+            *,
+            resident:hostel_residents(
+              student_name,
+              room_number
+            )
+          `
+          )
+          .eq('merchant_id', profile.id)
+          .order('created_at', { ascending: false }),
       ]);
 
-      let finalResidents = resData.data || [];
-      if (!resData.data || resData.data.length === 0) {
-        const defaultResidents = [
-          { student_name: 'Varun Dhawan', room_number: 'Room A-108', college_affiliation: 'IIT Kota', rent_due: 4500, status: 'Overdue', avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80' },
-          { student_name: 'Alia Bhatt', room_number: 'Room C-204', college_affiliation: 'IIIT Kota', rent_due: 0, status: 'Paid', avatar_url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&q=80' }
-        ].map(r => ({ ...r, merchant_id: profile.id }));
-        const seedRes = await supabase.from('hostel_residents').insert(defaultResidents).select();
-        if (seedRes.data) finalResidents = seedRes.data;
-      }
+      const mappedResidents =
+        residentRes.data?.map((r: any) => ({
+          id: r.id,
+          name: r.student_name,
+          room: r.room_number,
+          due: Number(r.rent_due || 0),
+          status: r.status,
+          image:
+            r.avatar_url ||
+            'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80',
+          college: r.college_affiliation,
+          phone: r.phone_number || '',
+        })) || [];
 
-      const mappedResidents = finalResidents.map((row: any) => ({
-        id: row.id,
-        name: row.student_name,
-        room: row.room_number,
-        due: parseFloat(row.rent_due) || 0,
-        status: row.status,
-        image: row.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80',
-        college: row.college_affiliation
-      }));
+      const mappedPasses =
+        passRes.data?.map((p: any) => ({
+          id: p.id,
+          studentName:
+            p.resident?.student_name || 'Resident',
+          room: p.resident?.room_number || 'N/A',
+          reason: p.reason,
+          outTime: p.out_time,
+          status: p.status,
+        })) || [];
+
       setResidents(mappedResidents);
-
-      let finalPasses = passData.data || [];
-      if ((!passData.data || passData.data.length === 0) && finalResidents.length > 0) {
-        const varunId = finalResidents.find(r => r.student_name === 'Varun Dhawan')?.id;
-        const aliaId = finalResidents.find(r => r.student_name === 'Alia Bhatt')?.id;
-
-        const defaultPasses = [];
-        if (varunId) {
-          defaultPasses.push({ resident_id: varunId, reason: 'Coaching Class Doubt Session', out_time: 'Today 04:00 PM', status: 'Pending' });
-        }
-        if (aliaId) {
-          defaultPasses.push({ resident_id: aliaId, reason: 'Visiting Parents', out_time: 'Yesterday 09:00 AM', status: 'Approved' });
-        }
-
-        if (defaultPasses.length > 0) {
-          const seedPasses = defaultPasses.map(p => ({ ...p, merchant_id: profile.id }));
-          const seedRes = await supabase.from('hostel_gate_passes').insert(seedPasses).select('*, resident:hostel_residents(student_name, room_number)');
-          if (seedRes.data) finalPasses = seedRes.data;
-        }
-      }
-
-      const mappedPasses = finalPasses.map((row: any) => ({
-        id: row.id,
-        studentName: row.resident?.student_name || 'Resident',
-        room: row.resident?.room_number || 'N/A',
-        reason: row.reason,
-        outTime: row.out_time,
-        status: row.status
-      }));
       setGatePasses(mappedPasses);
-
     } catch (e) {
-      console.error(e);
+      console.log(e);
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   }, [profile?.id]);
 
@@ -140,400 +166,1119 @@ function HostelManagerScreenMerchant() {
   }, [fetchData]);
 
   const onRefresh = () => {
-    setIsRefreshing(true);
+    setRefreshing(true);
     fetchData();
   };
 
-  const [activeTab, setActiveTab] = useState<'residents' | 'gatepass' | 'maintenance'>('residents');
-  
-  // Form State for Adding Student
-  const [isAddingStudent, setIsAddingStudent] = useState(false);
-  const [newStudent, setNewStudent] = useState({
-    name: '',
-    room: '',
-    due: '',
-    college: '',
-  });
-
-  // Analytics
-  const occupiedRooms = residents.length;
   const totalCapacity = 45;
-  const occupancyPercentage = totalCapacity > 0 ? (occupiedRooms / totalCapacity) * 100 : 0;
-  const pendingRentTotal = residents.reduce((sum, r) => sum + r.due, 0);
+  const occupiedRooms = residents.length;
 
-  const handleSettleRent = (id: string, name: string) => {
+  const occupancyPercent =
+    (occupiedRooms / totalCapacity) * 100;
+
+  const totalPendingRent = residents.reduce(
+    (sum, item) => sum + item.due,
+    0
+  );
+
+  const overdueCount = residents.filter(
+    (r) => r.status === 'Overdue'
+  ).length;
+
+  const filteredResidents = useMemo(() => {
+    return residents.filter((resident) => {
+      const matchesSearch =
+        resident.name
+          .toLowerCase()
+          .includes(search.toLowerCase()) ||
+        resident.room
+          .toLowerCase()
+          .includes(search.toLowerCase());
+
+      const matchesFilter =
+        residentFilter === 'All' ||
+        resident.status === residentFilter;
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [residents, search, residentFilter]);
+
+  const addResident = async () => {
+    if (!newResident.name || !newResident.room) {
+      Alert.alert(
+        'Missing Info',
+        'Student name and room required.'
+      );
+      return;
+    }
+
+    try {
+      const dueAmount =
+        parseFloat(newResident.due) || 0;
+
+      const { error } = await supabase
+        .from('hostel_residents')
+        .insert([
+          {
+            merchant_id: profile?.id,
+            student_name: newResident.name,
+            room_number: newResident.room,
+            rent_due: dueAmount,
+            college_affiliation:
+              newResident.college || 'Unknown',
+            phone_number: newResident.phone,
+            status:
+              dueAmount > 0 ? 'Overdue' : 'Paid',
+            avatar_url:
+              'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80',
+          },
+        ]);
+
+      if (error) throw error;
+
+      Alert.alert(
+        'Resident Added',
+        `${newResident.name} added successfully`
+      );
+
+      setNewResident({
+        name: '',
+        room: '',
+        due: '',
+        college: '',
+        phone: '',
+      });
+
+      setShowAddResident(false);
+
+      fetchData();
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    }
+  };
+
+  const settleRent = async (
+    residentId: string
+  ) => {
+    try {
+      const { error } = await supabase
+        .from('hostel_residents')
+        .update({
+          rent_due: 0,
+          status: 'Paid',
+        })
+        .eq('id', residentId);
+
+      if (error) throw error;
+
+      fetchData();
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    }
+  };
+
+  const deleteResident = async (
+    residentId: string
+  ) => {
     Alert.alert(
-      "Settle Rent Dues",
-      `Record complete payment of outstanding dues for ${name}?`,
+      'Delete Resident',
+      'Remove resident permanently?',
       [
-        { text: "Cancel", style: "cancel" },
         {
-          text: "Confirm Settle",
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
           onPress: async () => {
             try {
-              const { error } = await supabase.from('hostel_residents').update({
-                rent_due: 0,
-                status: 'Paid'
-              }).eq('id', id);
+              const { error } = await supabase
+                .from('hostel_residents')
+                .delete()
+                .eq('id', residentId);
+
               if (error) throw error;
-              Alert.alert("Rent Settle Recorded", `${name}'s outstanding dues have been successfully settled!`);
+
               fetchData();
             } catch (e: any) {
-              Alert.alert("Error", e.message);
+              Alert.alert('Error', e.message);
             }
-          }
-        }
+          },
+        },
       ]
     );
   };
 
-  const handleApproveGatePass = async (id: string) => {
+  const updateGatePass = async (
+    passId: string,
+    status: 'Approved' | 'Returned'
+  ) => {
     try {
-      const { error } = await supabase.from('hostel_gate_passes').update({ status: 'Approved' }).eq('id', id);
-      if (error) throw error;
-      fetchData();
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    }
-  };
-
-  const handleReturnGatePass = async (id: string) => {
-    try {
-      const { error } = await supabase.from('hostel_gate_passes').update({ status: 'Returned' }).eq('id', id);
-      if (error) throw error;
-      fetchData();
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    }
-  };
-
-  const handleAddStudentSubmit = async () => {
-    if (!newStudent.name || !newStudent.room) {
-      Alert.alert("Input Required", "Please provide a student name and room number.");
-      return;
-    }
-    if (!profile?.id) return;
-
-    const dueVal = parseFloat(newStudent.due) || 0;
-
-    try {
-      const { error } = await supabase.from('hostel_residents').insert([{
-        merchant_id: profile.id,
-        student_name: newStudent.name,
-        room_number: newStudent.room,
-        college_affiliation: newStudent.college || 'Kota Educational Academy',
-        rent_due: dueVal,
-        status: dueVal > 0 ? 'Overdue' : 'Paid',
-        avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80'
-      }]);
+      const { error } = await supabase
+        .from('hostel_gate_passes')
+        .update({ status })
+        .eq('id', passId);
 
       if (error) throw error;
 
-      Alert.alert("Student Registered", `${newStudent.name} is now allocated to Room ${newStudent.room}.`);
-      setIsAddingStudent(false);
-      setNewStudent({ name: '', room: '', due: '', college: '' });
       fetchData();
     } catch (e: any) {
-      Alert.alert("Error", e.message);
+      Alert.alert('Error', e.message);
     }
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-      <Stack.Screen options={{ title: 'Hostel Manager' }} />
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: colors.background },
+      ]}
+    >
+      <StatusBar
+        style={theme === 'dark' ? 'light' : 'dark'}
+      />
 
-      <ScrollView 
-         showsVerticalScrollIndicator={false} 
-         contentContainerStyle={styles.scrollContent}
-         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      <Stack.Screen
+        options={{
+          title: 'Hostel Manager',
+        }}
+      />
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
       >
-        
-        {/* Occupancy and Rent HUD */}
+        {/* TOP HUD */}
         <GlassCard style={styles.hudCard}>
-          <View style={styles.hudHeader}>
-             <View>
-                <Text style={[styles.hudSub, { color: 'rgba(255,255,255,0.7)' }]}>MONTHLY OUTSTANDING</Text>
-                <Text style={styles.hudPendingAmt}>₹{pendingRentTotal.toLocaleString('en-IN')}</Text>
-             </View>
-             <Building size={32} color="#FFF" />
+          <View style={styles.hudTop}>
+            <View>
+              <Text style={styles.hudMini}>
+                TOTAL PENDING RENT
+              </Text>
+
+              <Text style={styles.hudAmount}>
+                ₹{totalPendingRent}
+              </Text>
+            </View>
+
+            <Building size={30} color="#FFF" />
           </View>
 
-          <View style={[styles.divider, { backgroundColor: 'rgba(255,255,255,0.15)', marginVertical: 14 }]} />
+          <View style={styles.hudDivider} />
 
-          {/* Progress Occupancy */}
-          <View style={styles.occupancyBarContainer}>
-             <View style={styles.occupancyLabels}>
-                <Text style={styles.occupancyText}>Hostel Room Occupancy</Text>
-                <Text style={styles.occupancyText}>{occupiedRooms}/{totalCapacity} Rooms</Text>
-             </View>
-             <View style={styles.barBg}>
-                <View style={[styles.barFill, { width: `${occupancyPercentage}%` }]} />
-             </View>
+          <View style={styles.statsRow}>
+            <View>
+              <Text style={styles.statsValue}>
+                {occupiedRooms}/{totalCapacity}
+              </Text>
+              <Text style={styles.statsLabel}>
+                Occupied
+              </Text>
+            </View>
+
+            <View>
+              <Text style={styles.statsValue}>
+                {overdueCount}
+              </Text>
+              <Text style={styles.statsLabel}>
+                Overdue
+              </Text>
+            </View>
+
+            <View>
+              <Text style={styles.statsValue}>
+                {Math.round(occupancyPercent)}%
+              </Text>
+              <Text style={styles.statsLabel}>
+                Capacity
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.progressBg}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  width: `${occupancyPercent}%`,
+                },
+              ]}
+            />
           </View>
         </GlassCard>
 
-        {/* Residents View */}
+        {/* RESIDENTS */}
         {activeTab === 'residents' && (
-          <View style={styles.fadeContainer}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Active Roster</Text>
-              {!isAddingStudent && (
-                <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => setIsAddingStudent(true)}>
-                  <Plus size={16} color="#FFF" />
-                  <Text style={styles.addBtnTxt}>Add Resident</Text>
-                </TouchableOpacity>
+          <>
+            <View style={styles.headerRow}>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: colors.text },
+                ]}
+              >
+                Residents
+              </Text>
+
+              <TouchableOpacity
+                style={[
+                  styles.addBtn,
+                  {
+                    backgroundColor:
+                      colors.primary,
+                  },
+                ]}
+                onPress={() =>
+                  setShowAddResident(
+                    !showAddResident
+                  )
+                }
+              >
+                <UserPlus
+                  size={14}
+                  color="#FFF"
+                />
+
+                <Text style={styles.addBtnTxt}>
+                  Add
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* SEARCH */}
+            <View
+              style={[
+                styles.searchBox,
+                {
+                  borderColor: colors.border,
+                  backgroundColor:
+                    colors.surface,
+                },
+              ]}
+            >
+              <Search
+                size={16}
+                color={colors.textMuted}
+              />
+
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Search resident..."
+                placeholderTextColor={
+                  colors.textMuted
+                }
+                style={[
+                  styles.searchInput,
+                  { color: colors.text },
+                ]}
+              />
+            </View>
+
+            {/* FILTERS */}
+            <View style={styles.filterRow}>
+              {['All', 'Paid', 'Overdue'].map(
+                (item) => {
+                  const active =
+                    residentFilter === item;
+
+                  return (
+                    <TouchableOpacity
+                      key={item}
+                      style={[
+                        styles.filterChip,
+                        {
+                          borderColor:
+                            colors.border,
+                          backgroundColor:
+                            active
+                              ? colors.primary +
+                                '20'
+                              : colors.surface,
+                        },
+                      ]}
+                      onPress={() =>
+                        setResidentFilter(
+                          item as any
+                        )
+                      }
+                    >
+                      <Text
+                        style={{
+                          color: active
+                            ? colors.primary
+                            : colors.textMuted,
+                          fontWeight: '700',
+                        }}
+                      >
+                        {item}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }
               )}
             </View>
 
-            {/* Add Resident Form */}
-            {isAddingStudent && (
+            {/* ADD FORM */}
+            {showAddResident && (
               <GlassCard style={styles.formCard}>
-                <Text style={[styles.formTitle, { color: colors.text }]}>Register New Student</Text>
-                
-                <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Student Name</Text>
-                <TextInput
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surfaceLight }]}
-                  placeholder="e.g. Rahul Sharma"
-                  placeholderTextColor={colors.textMuted}
-                  value={newStudent.name}
-                  onChangeText={val => setNewStudent({ ...newStudent, name: val })}
-                />
+                <Text
+                  style={[
+                    styles.formTitle,
+                    { color: colors.text },
+                  ]}
+                >
+                  Register Resident
+                </Text>
 
-                <View style={styles.formRow}>
-                  <View style={styles.flex1}>
-                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Room No</Text>
-                    <TextInput
-                      style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surfaceLight }]}
-                      placeholder="304"
-                      placeholderTextColor={colors.textMuted}
-                      value={newStudent.room}
-                      onChangeText={val => setNewStudent({ ...newStudent, room: val })}
-                    />
-                  </View>
-                  <View style={styles.flex1}>
-                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Advance/Due (₹)</Text>
-                    <TextInput
-                      style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surfaceLight }]}
-                      placeholder="0"
-                      placeholderTextColor={colors.textMuted}
-                      keyboardType="numeric"
-                      value={newStudent.due}
-                      onChangeText={val => setNewStudent({ ...newStudent, due: val })}
-                    />
-                  </View>
-                </View>
+                {[
+                  {
+                    key: 'name',
+                    placeholder:
+                      'Student Name',
+                  },
+                  {
+                    key: 'room',
+                    placeholder: 'Room No',
+                  },
+                  {
+                    key: 'phone',
+                    placeholder:
+                      'Phone Number',
+                  },
+                  {
+                    key: 'college',
+                    placeholder:
+                      'College / Coaching',
+                  },
+                  {
+                    key: 'due',
+                    placeholder:
+                      'Pending Rent',
+                  },
+                ].map((field) => (
+                  <TextInput
+                    key={field.key}
+                    placeholder={
+                      field.placeholder
+                    }
+                    placeholderTextColor={
+                      colors.textMuted
+                    }
+                    value={
+                      newResident[
+                        field.key as keyof typeof newResident
+                      ]
+                    }
+                    onChangeText={(val) =>
+                      setNewResident({
+                        ...newResident,
+                        [field.key]: val,
+                      })
+                    }
+                    style={[
+                      styles.formInput,
+                      {
+                        color: colors.text,
+                        borderColor:
+                          colors.border,
+                        backgroundColor:
+                          colors.surfaceLight,
+                      },
+                    ]}
+                  />
+                ))}
 
-                <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Kota Coaching College/Institute</Text>
-                <TextInput
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surfaceLight }]}
-                  placeholder="e.g. Allen Institute"
-                  placeholderTextColor={colors.textMuted}
-                  value={newStudent.college}
-                  onChangeText={val => setNewStudent({ ...newStudent, college: val })}
-                />
-
-                <View style={styles.formActions}>
-                  <TouchableOpacity style={[styles.cancelFormBtn, { borderColor: colors.border }]} onPress={() => setIsAddingStudent(false)}>
-                    <Text style={[styles.cancelFormTxt, { color: colors.text }]}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.submitFormBtn, { backgroundColor: colors.primary }]} onPress={handleAddStudentSubmit}>
-                    <Text style={styles.submitFormTxt}>Save Allocation</Text>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor:
+                        colors.primary,
+                    },
+                  ]}
+                  onPress={addResident}
+                >
+                  <Text style={styles.submitTxt}>
+                    Save Resident
+                  </Text>
+                </TouchableOpacity>
               </GlassCard>
             )}
 
-            {/* Residents Cards */}
-            {residents.map((student) => (
-              <GlassCard key={student.id} style={styles.residentCard}>
-                <View style={styles.residentHeader}>
-                  <Image source={{ uri: student.image }} style={styles.residentAvatar} />
-                  <View style={styles.residentInfo}>
-                    <Text style={[styles.residentName, { color: colors.text }]}>{student.name}</Text>
-                    <Text style={[styles.residentCollege, { color: colors.textMuted }]}>{student.college}</Text>
-                    <View style={[styles.roomBadge, { backgroundColor: colors.surface }]}>
-                      <Key size={10} color={colors.primary} />
-                      <Text style={[styles.roomBadgeTxt, { color: colors.text }]}>Room {student.room}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.paymentInfo}>
-                    <View style={[styles.statusBadge, { backgroundColor: student.status === 'Paid' ? colors.success + '20' : colors.error + '20' }]}>
-                      <Text style={[styles.statusTxt, { color: student.status === 'Paid' ? colors.success : colors.error }]}>
-                        {student.status.toUpperCase()}
-                      </Text>
-                    </View>
-                    {student.due > 0 && <Text style={[styles.dueAmt, { color: colors.text }]}>₹{student.due}</Text>}
-                  </View>
-                </View>
-
-                {student.due > 0 && (
-                  <View style={styles.residentActions}>
-                    <TouchableOpacity 
-                      style={[styles.settleBtn, { backgroundColor: colors.primary }]}
-                      onPress={() => handleSettleRent(student.id, student.name)}
+            {loading ? (
+              <ActivityIndicator
+                color={colors.primary}
+                size="large"
+                style={{ marginTop: 40 }}
+              />
+            ) : (
+              filteredResidents.map(
+                (resident) => (
+                  <GlassCard
+                    key={resident.id}
+                    style={styles.residentCard}
+                  >
+                    <View
+                      style={
+                        styles.residentTop
+                      }
                     >
-                      <CreditCard size={14} color="#FFF" />
-                      <Text style={styles.settleBtnTxt}>Record Rent Cashout</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </GlassCard>
-            ))}
-          </View>
+                      <Image
+                        source={{
+                          uri: resident.image,
+                        }}
+                        style={
+                          styles.avatar
+                        }
+                      />
+
+                      <View
+                        style={{
+                          flex: 1,
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.name,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          {resident.name}
+                        </Text>
+
+                        <Text
+                          style={{
+                            color:
+                              colors.textMuted,
+                            fontSize: 11,
+                          }}
+                        >
+                          {
+                            resident.college
+                          }
+                        </Text>
+
+                        <View
+                          style={[
+                            styles.roomBadge,
+                            {
+                              backgroundColor:
+                                colors.surface,
+                            },
+                          ]}
+                        >
+                          <Key
+                            size={10}
+                            color={
+                              colors.primary
+                            }
+                          />
+
+                          <Text
+                            style={{
+                              color:
+                                colors.text,
+                              fontSize: 10,
+                              fontWeight:
+                                '800',
+                            }}
+                          >
+                            Room{' '}
+                            {
+                              resident.room
+                            }
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View
+                        style={{
+                          alignItems:
+                            'flex-end',
+                        }}
+                      >
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            {
+                              backgroundColor:
+                                resident.status ===
+                                'Paid'
+                                  ? colors.success +
+                                    '20'
+                                  : colors.error +
+                                    '20',
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              color:
+                                resident.status ===
+                                'Paid'
+                                  ? colors.success
+                                  : colors.error,
+                              fontWeight:
+                                '900',
+                              fontSize: 9,
+                            }}
+                          >
+                            {
+                              resident.status
+                            }
+                          </Text>
+                        </View>
+
+                        {resident.due >
+                          0 && (
+                          <Text
+                            style={{
+                              marginTop: 6,
+                              fontWeight:
+                                '900',
+                              color:
+                                colors.text,
+                            }}
+                          >
+                            ₹
+                            {
+                              resident.due
+                            }
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+
+                    <View
+                      style={
+                        styles.actionRow
+                      }
+                    >
+                      {resident.phone ? (
+                        <View
+                          style={[
+                            styles.phoneBadge,
+                            {
+                              backgroundColor:
+                                colors.surface,
+                            },
+                          ]}
+                        >
+                          <Phone
+                            size={12}
+                            color={
+                              colors.primary
+                            }
+                          />
+
+                          <Text
+                            style={{
+                              color:
+                                colors.text,
+                              fontSize: 10,
+                            }}
+                          >
+                            {
+                              resident.phone
+                            }
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      <View
+                        style={{
+                          flexDirection:
+                            'row',
+                          gap: 8,
+                        }}
+                      >
+                        {resident.due >
+                          0 && (
+                          <TouchableOpacity
+                            style={[
+                              styles.payBtn,
+                              {
+                                backgroundColor:
+                                  colors.primary,
+                              },
+                            ]}
+                            onPress={() =>
+                              settleRent(
+                                resident.id
+                              )
+                            }
+                          >
+                            <CreditCard
+                              size={13}
+                              color="#FFF"
+                            />
+
+                            <Text
+                              style={
+                                styles.payBtnTxt
+                              }
+                            >
+                              Settle
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+
+                        <TouchableOpacity
+                          style={[
+                            styles.deleteBtn,
+                            {
+                              backgroundColor:
+                                colors.error +
+                                '20',
+                            },
+                          ]}
+                          onPress={() =>
+                            deleteResident(
+                              resident.id
+                            )
+                          }
+                        >
+                          <Trash2
+                            size={14}
+                            color={
+                              colors.error
+                            }
+                          />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </GlassCard>
+                )
+              )
+            )}
+          </>
         )}
 
-        {/* Gate Pass View */}
+        {/* GATE PASS */}
         {activeTab === 'gatepass' && (
-          <View style={styles.fadeContainer}>
-            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 16 }]}>Active Checkout Passes</Text>
-            
+          <>
+            <Text
+              style={[
+                styles.sectionTitle,
+                {
+                  color: colors.text,
+                  marginBottom: 16,
+                },
+              ]}
+            >
+              Gate Pass Monitor
+            </Text>
+
             {gatePasses.map((pass) => (
-              <GlassCard key={pass.id} style={styles.passCard}>
-                <View style={styles.passHeader}>
+              <GlassCard
+                key={pass.id}
+                style={styles.passCard}
+              >
+                <View
+                  style={styles.passTop}
+                >
                   <View>
-                    <Text style={[styles.passStudent, { color: colors.text }]}>{pass.studentName}</Text>
-                    <Text style={[styles.passMeta, { color: colors.textMuted }]}>Room {pass.room} • Out at: {pass.outTime}</Text>
+                    <Text
+                      style={{
+                        color: colors.text,
+                        fontWeight: '800',
+                      }}
+                    >
+                      {
+                        pass.studentName
+                      }
+                    </Text>
+
+                    <Text
+                      style={{
+                        color:
+                          colors.textMuted,
+                        fontSize: 11,
+                      }}
+                    >
+                      Room {pass.room}
+                    </Text>
                   </View>
 
-                  <View style={[
-                    styles.passStatusBadge, 
-                    pass.status === 'Approved' && { backgroundColor: colors.success + '20' },
-                    pass.status === 'Pending' && { backgroundColor: '#F59E0B20' },
-                    pass.status === 'Returned' && { backgroundColor: colors.primary + '20' }
-                  ]}>
-                    <Text style={[
-                      styles.passStatusTxt,
-                      pass.status === 'Approved' && { color: colors.success },
-                      pass.status === 'Pending' && { color: '#F59E0B' },
-                      pass.status === 'Returned' && { color: colors.primary }
-                    ]}>
-                      {pass.status.toUpperCase()}
+                  <View
+                    style={[
+                      styles.passStatus,
+                      {
+                        backgroundColor:
+                          pass.status ===
+                          'Approved'
+                            ? colors.success +
+                              '20'
+                            : pass.status ===
+                              'Returned'
+                            ? colors.primary +
+                              '20'
+                            : '#F59E0B20',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          pass.status ===
+                          'Approved'
+                            ? colors.success
+                            : pass.status ===
+                              'Returned'
+                            ? colors.primary
+                            : '#F59E0B',
+                        fontWeight:
+                          '900',
+                        fontSize: 9,
+                      }}
+                    >
+                      {pass.status}
                     </Text>
                   </View>
                 </View>
 
-                <Text style={[styles.passReason, { color: colors.text, backgroundColor: colors.surface }]}>
-                  Reason: {pass.reason}
+                <View
+                  style={[
+                    styles.reasonBox,
+                    {
+                      backgroundColor:
+                        colors.surface,
+                    },
+                  ]}
+                >
+                  <Clock3
+                    size={14}
+                    color={
+                      colors.primary
+                    }
+                  />
+
+                  <Text
+                    style={{
+                      color:
+                        colors.text,
+                      flex: 1,
+                      fontSize: 12,
+                    }}
+                  >
+                    {pass.reason}
+                  </Text>
+                </View>
+
+                <Text
+                  style={{
+                    marginTop: 8,
+                    color:
+                      colors.textMuted,
+                    fontSize: 11,
+                  }}
+                >
+                  Out Time: {pass.outTime}
                 </Text>
 
-                {pass.status === 'Pending' && (
-                  <View style={styles.passActions}>
-                    <TouchableOpacity 
-                      style={[styles.passApproveBtn, { backgroundColor: colors.success }]}
-                      onPress={() => handleApproveGatePass(pass.id)}
+                {pass.status ===
+                  'Pending' && (
+                  <TouchableOpacity
+                    style={[
+                      styles.approveBtn,
+                      {
+                        backgroundColor:
+                          colors.success,
+                      },
+                    ]}
+                    onPress={() =>
+                      updateGatePass(
+                        pass.id,
+                        'Approved'
+                      )
+                    }
+                  >
+                    <CheckCircle
+                      size={14}
+                      color="#FFF"
+                    />
+
+                    <Text
+                      style={
+                        styles.approveTxt
+                      }
                     >
-                      <CheckCircle size={14} color="#FFF" />
-                      <Text style={styles.passApproveTxt}>Approve Outing</Text>
-                    </TouchableOpacity>
-                  </View>
+                      Approve Pass
+                    </Text>
+                  </TouchableOpacity>
                 )}
 
-                {pass.status === 'Approved' && (
-                  <View style={styles.passActions}>
-                    <TouchableOpacity 
-                      style={[styles.passReturnBtn, { backgroundColor: colors.primary }]}
-                      onPress={() => handleReturnGatePass(pass.id)}
+                {pass.status ===
+                  'Approved' && (
+                  <TouchableOpacity
+                    style={[
+                      styles.returnBtn,
+                      {
+                        backgroundColor:
+                          colors.primary,
+                      },
+                    ]}
+                    onPress={() =>
+                      updateGatePass(
+                        pass.id,
+                        'Returned'
+                      )
+                    }
+                  >
+                    <ArrowUpRight
+                      size={14}
+                      color="#FFF"
+                    />
+
+                    <Text
+                      style={
+                        styles.approveTxt
+                      }
                     >
-                      <ArrowUpRight size={14} color="#FFF" />
-                      <Text style={styles.passReturnTxt}>Record Return Check-in</Text>
-                    </TouchableOpacity>
-                  </View>
+                      Mark Returned
+                    </Text>
+                  </TouchableOpacity>
                 )}
               </GlassCard>
             ))}
-          </View>
+          </>
         )}
 
-        {/* Maintenance View */}
+        {/* MAINTENANCE */}
         {activeTab === 'maintenance' && (
-          <View style={styles.fadeContainer}>
-            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 16 }]}>Amenities & Repairs Check</Text>
-            
-            <GlassCard style={styles.maintenanceCard}>
-              <View style={styles.amenityStatusRow}>
-                <View style={styles.amenityIconBox}>
-                  <Home size={22} color={colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.amenityTitle, { color: colors.text }]}>High-speed Hostel Wi-Fi</Text>
-                  <Text style={[styles.amenityDesc, { color: colors.textMuted }]}>Main router server (Common room)</Text>
-                </View>
-                <View style={[styles.amenityActiveBadge, { backgroundColor: colors.success + '20' }]}>
-                  <Text style={[styles.amenityActiveTxt, { color: colors.success }]}>NOMINAL</Text>
-                </View>
-              </View>
-
-              <View style={[styles.divider, { backgroundColor: colors.border, marginVertical: 14 }]} />
-
-              <View style={styles.amenityStatusRow}>
-                <View style={[styles.amenityIconBox, { backgroundColor: '#F59E0B20' }]}>
-                  <AlertTriangle size={22} color="#F59E0B" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.amenityTitle, { color: colors.text }]}>Hostel Elevator Block B</Text>
-                  <Text style={[styles.amenityDesc, { color: colors.textMuted }]}>Scheduled motor safety inspection</Text>
-                </View>
-                <View style={[styles.amenityActiveBadge, { backgroundColor: '#F59E0B20' }]}>
-                  <Text style={[styles.amenityActiveTxt, { color: '#F59E0B' }]}>MAINTENANCE DUE</Text>
-                </View>
-              </View>
-
-              <View style={[styles.divider, { backgroundColor: colors.border, marginVertical: 14 }]} />
-
-              <View style={styles.amenityStatusRow}>
-                <View style={[styles.amenityIconBox, { backgroundColor: colors.error + '20' }]}>
-                  <Lock size={22} color={colors.error} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.amenityTitle, { color: colors.text }]}>Biometric Attendance Gate</Text>
-                  <Text style={[styles.amenityDesc, { color: colors.textMuted }]}>Warden exit fingerprint gate offline</Text>
-                </View>
-                <View style={[styles.amenityActiveBadge, { backgroundColor: colors.error + '20' }]}>
-                  <Text style={[styles.amenityActiveTxt, { color: colors.error }]}>INCIDENT LOGGED</Text>
-                </View>
-              </View>
-            </GlassCard>
-
-            <TouchableOpacity 
-              style={[styles.reportIncidentBtn, { borderColor: colors.error }]}
-              onPress={() => Alert.alert("Incident Reporting Center", "Log Wi-Fi outages or broken water filters to Warden desk.")}
+          <>
+            <Text
+              style={[
+                styles.sectionTitle,
+                {
+                  color: colors.text,
+                  marginBottom: 16,
+                },
+              ]}
             >
-              <AlertTriangle size={18} color={colors.error} />
-              <Text style={[styles.reportIncidentTxt, { color: colors.error }]}>Log New Hostel Issue</Text>
-            </TouchableOpacity>
-          </View>
+              Hostel Maintenance
+            </Text>
+
+            {[
+              {
+                icon: Home,
+                title: 'WiFi Network',
+                desc: 'All routers stable',
+                status: 'WORKING',
+                type: 'success',
+              },
+              {
+                icon: AlertTriangle,
+                title: 'Water Filter',
+                desc: '2nd floor service due',
+                status: 'CHECK',
+                type: 'warning',
+              },
+              {
+                icon: Lock,
+                title: 'Biometric Gate',
+                desc: 'Fingerprint sync offline',
+                status: 'ERROR',
+                type: 'error',
+              },
+            ].map((item, idx) => {
+              const Icon = item.icon;
+
+              return (
+                <GlassCard
+                  key={idx}
+                  style={
+                    styles.maintenanceCard
+                  }
+                >
+                  <View
+                    style={
+                      styles.maintenanceRow
+                    }
+                  >
+                    <View
+                      style={[
+                        styles.maintenanceIcon,
+                        {
+                          backgroundColor:
+                            item.type ===
+                            'success'
+                              ? colors.success +
+                                '20'
+                              : item.type ===
+                                'warning'
+                              ? '#F59E0B20'
+                              : colors.error +
+                                '20',
+                        },
+                      ]}
+                    >
+                      <Icon
+                        size={20}
+                        color={
+                          item.type ===
+                          'success'
+                            ? colors.success
+                            : item.type ===
+                              'warning'
+                            ? '#F59E0B'
+                            : colors.error
+                        }
+                      />
+                    </View>
+
+                    <View
+                      style={{
+                        flex: 1,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            colors.text,
+                          fontWeight:
+                            '800',
+                        }}
+                      >
+                        {item.title}
+                      </Text>
+
+                      <Text
+                        style={{
+                          color:
+                            colors.textMuted,
+                          fontSize: 11,
+                        }}
+                      >
+                        {item.desc}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.statusPill,
+                        {
+                          backgroundColor:
+                            item.type ===
+                            'success'
+                              ? colors.success +
+                                '20'
+                              : item.type ===
+                                'warning'
+                              ? '#F59E0B20'
+                              : colors.error +
+                                '20',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 9,
+                          fontWeight:
+                            '900',
+                          color:
+                            item.type ===
+                            'success'
+                              ? colors.success
+                              : item.type ===
+                                'warning'
+                              ? '#F59E0B'
+                              : colors.error,
+                        }}
+                      >
+                        {item.status}
+                      </Text>
+                    </View>
+                  </View>
+                </GlassCard>
+              );
+            })}
+          </>
         )}
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 120 }} />
       </ScrollView>
 
-      {/* Floating Bottom Navigation */}
-      <View style={[
-        styles.bottomTabBar, 
-        { 
-          backgroundColor: colors.surface + 'E8', 
-          borderColor: colors.border,
-          shadowColor: colors.primary,
-        }
-      ]}>
+      {/* BOTTOM NAV */}
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            backgroundColor:
+              colors.surface + 'E8',
+            borderColor: colors.border,
+          },
+        ]}
+      >
         {[
-          { id: 'residents', label: 'Residents', icon: Users },
-          { id: 'gatepass', label: 'Gate Pass', icon: Key },
-          { id: 'maintenance', label: 'Amenities', icon: Shield },
-        ].map(tab => {
-          const isActive = activeTab === tab.id;
+          {
+            id: 'residents',
+            label: 'Residents',
+            icon: Users,
+          },
+          {
+            id: 'gatepass',
+            label: 'Gate Pass',
+            icon: Key,
+          },
+          {
+            id: 'maintenance',
+            label: 'Maintenance',
+            icon: Shield,
+          },
+        ].map((tab) => {
           const Icon = tab.icon;
+
+          const active =
+            activeTab === tab.id;
+
           return (
             <TouchableOpacity
               key={tab.id}
-              style={[styles.bottomTabBtn, isActive && { backgroundColor: colors.primary + '18' }]}
-              onPress={() => { setActiveTab(tab.id as any); setIsAddingStudent(false); }}
+              style={[
+                styles.bottomBtn,
+                active && {
+                  backgroundColor:
+                    colors.primary +
+                    '20',
+                },
+              ]}
+              onPress={() =>
+                setActiveTab(
+                  tab.id as any
+                )
+              }
             >
-              <View style={[styles.bottomTabIndicator, isActive && { backgroundColor: colors.primary }]} />
-              <Icon size={20} color={isActive ? colors.primary : colors.textMuted} />
-              <Text style={[styles.bottomTabLabel, { color: isActive ? colors.primary : colors.textMuted }]}>
+              <Icon
+                size={20}
+                color={
+                  active
+                    ? colors.primary
+                    : colors.textMuted
+                }
+              />
+
+              <Text
+                style={{
+                  color: active
+                    ? colors.primary
+                    : colors.textMuted,
+                  fontSize: 10,
+                  fontWeight: '800',
+                }}
+              >
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -542,398 +1287,347 @@ function HostelManagerScreenMerchant() {
       </View>
     </View>
   );
-
 }
-
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+
   scrollContent: {
     padding: Spacing.md,
   },
+
   hudCard: {
-    backgroundColor: '#6366F1',
-    borderColor: 'rgba(255,255,255,0.2)',
     padding: 20,
     borderRadius: 24,
     marginBottom: 20,
+    backgroundColor: '#6366F1',
   },
-  hudHeader: {
+
+  hudTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  hudSub: {
-    fontSize: 9,
+
+  hudMini: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 1,
   },
-  hudPendingAmt: {
+
+  hudAmount: {
     color: '#FFF',
     fontSize: 28,
     fontWeight: '900',
     marginTop: 4,
   },
-  divider: {
+
+  hudDivider: {
     height: 1,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    marginVertical: 16,
   },
-  occupancyBarContainer: {
-    gap: 8,
-  },
-  occupancyLabels: {
+
+  statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
   },
-  occupancyText: {
+
+  statsValue: {
     color: '#FFF',
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '900',
   },
-  barBg: {
+
+  statsLabel: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    marginTop: 2,
+  },
+
+  progressBg: {
     height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 10,
+    marginTop: 14,
     overflow: 'hidden',
   },
-  barFill: {
+
+  progressFill: {
     height: '100%',
     backgroundColor: '#FFF',
-    borderRadius: 4,
   },
-  tabContainer: {
-    flexDirection: 'row',
-    borderRadius: 16,
-    padding: 4,
-    borderWidth: 1,
-    marginBottom: 20,
-  },
-  tabBtn: {
-    flex: 1,
-    height: 38,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tabText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  fadeContainer: {
-    animationDuration: '300ms',
-  },
-  sectionHeader: {
+
+  headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
+
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '900',
   },
+
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
     gap: 6,
+    paddingHorizontal: 12,
+    height: 36,
+    borderRadius: 10,
   },
+
   addBtnTxt: {
     color: '#FFF',
+    fontWeight: '800',
     fontSize: 11,
-    fontWeight: '700',
   },
+
+  searchBox: {
+    height: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    gap: 8,
+    marginBottom: 12,
+  },
+
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+  },
+
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+
+  formCard: {
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 16,
+  },
+
+  formTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: 12,
+  },
+
+  formInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 46,
+    marginBottom: 10,
+  },
+
+  submitBtn: {
+    height: 46,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+
+  submitTxt: {
+    color: '#FFF',
+    fontWeight: '900',
+  },
+
   residentCard: {
     padding: 16,
     borderRadius: 20,
     marginBottom: 12,
-    backgroundColor: 'rgba(255,255,255,0.02)',
   },
-  residentHeader: {
+
+  residentTop: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  residentAvatar: {
-    width: 52,
-    height: 52,
+
+  avatar: {
+    width: 56,
+    height: 56,
     borderRadius: 16,
-    marginRight: 14,
+    marginRight: 12,
   },
-  residentInfo: {
-    flex: 1,
-    gap: 4,
+
+  name: {
+    fontSize: 15,
+    fontWeight: '900',
   },
-  residentName: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  residentCollege: {
-    fontSize: 11,
-  },
+
   roomBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    gap: 4,
     alignSelf: 'flex-start',
-    gap: 4,
-  },
-  roomBadgeTxt: {
-    fontSize: 9,
-    fontWeight: '800',
-  },
-  paymentInfo: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  statusBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginTop: 6,
   },
-  statusTxt: {
-    fontSize: 9,
-    fontWeight: '900',
-    textTransform: 'uppercase',
+
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  dueAmt: {
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  residentActions: {
+
+  actionRow: {
     marginTop: 14,
     borderTopWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
     paddingTop: 12,
-  },
-  settleBtn: {
-    height: 38,
-    borderRadius: 10,
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+  phoneBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
   },
-  settleBtnTxt: {
+
+  payBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    height: 36,
+    borderRadius: 10,
+  },
+
+  payBtnTxt: {
     color: '#FFF',
     fontWeight: '800',
-    fontSize: 12,
+    fontSize: 11,
   },
+
+  deleteBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
   passCard: {
     padding: 16,
     borderRadius: 20,
     marginBottom: 12,
   },
-  passHeader: {
+
+  passTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
   },
-  passStudent: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  passMeta: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  passStatusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  passStatusTxt: {
-    fontSize: 9,
-    fontWeight: '900',
-  },
-  passReason: {
-    fontSize: 12,
-    padding: 10,
+
+  passStatus: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 8,
-    marginTop: 12,
-    fontWeight: '600',
   },
-  passActions: {
+
+  reasonBox: {
     flexDirection: 'row',
-    marginTop: 14,
     gap: 8,
-  },
-  passApproveBtn: {
-    flex: 1,
-    height: 38,
-    borderRadius: 10,
-    flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 12,
   },
-  passApproveTxt: {
-    color: '#FFF',
-    fontWeight: '800',
-    fontSize: 12,
-  },
-  passReturnBtn: {
-    flex: 1,
-    height: 38,
-    borderRadius: 10,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-  },
-  passReturnTxt: {
-    color: '#FFF',
-    fontWeight: '800',
-    fontSize: 12,
-  },
-  maintenanceCard: {
-    padding: 16,
-  },
-  amenityStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  amenityIconBox: {
-    width: 40,
+
+  approveBtn: {
+    marginTop: 14,
     height: 40,
     borderRadius: 12,
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  amenityTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  amenityDesc: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  amenityActiveBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  amenityActiveTxt: {
-    fontSize: 8,
-    fontWeight: '900',
-  },
-  reportIncidentBtn: {
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1,
     flexDirection: 'row',
+    gap: 6,
+  },
+
+  returnBtn: {
+    marginTop: 14,
+    height: 40,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 20,
+    flexDirection: 'row',
+    gap: 6,
   },
-  reportIncidentTxt: {
-    fontWeight: 'bold',
-    fontSize: 13,
+
+  approveTxt: {
+    color: '#FFF',
+    fontWeight: '900',
+    fontSize: 12,
   },
-  formCard: {
+
+  maintenanceCard: {
     padding: 16,
     borderRadius: 20,
-    marginBottom: 16,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-  },
-  formTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    marginBottom: 8,
-  },
-  formInput: {
-    borderRadius: 10,
-    padding: 10,
-    fontSize: 14,
-    borderWidth: 1,
     marginBottom: 12,
   },
-  formRow: {
+
+  maintenanceRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
   },
-  flex1: {
-    flex: 1,
-  },
-  inputLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  formActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  cancelFormBtn: {
-    flex: 1,
-    height: 40,
-    borderRadius: 10,
-    borderWidth: 1,
+
+  maintenanceIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cancelFormTxt: {
-    fontSize: 12,
-    fontWeight: '700',
+
+  statusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
   },
-  submitFormBtn: {
-    flex: 2,
-    height: 40,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  submitFormTxt: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  bottomTabBar: {
+
+  bottomBar: {
     position: 'absolute',
     bottom: 20,
     left: 16,
     right: 16,
-    height: 72,
-    borderRadius: 22,
+    height: 74,
+    borderRadius: 24,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 6,
-    elevation: 12,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
+    paddingHorizontal: 8,
   },
-  bottomTabBtn: {
+
+  bottomBtn: {
     flex: 1,
     height: 56,
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 3,
-  },
-  bottomTabIndicator: {
-    width: 16,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: 'transparent',
-    marginBottom: 2,
-  },
-  bottomTabLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: 0.2,
+    gap: 4,
   },
 });

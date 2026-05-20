@@ -86,14 +86,23 @@ export default function TabLayout() {
     <View style={styles.headerActions}>
       <TouchableOpacity 
         onPress={() => router.push('/notifications')}
-        style={[styles.headerBtn, { backgroundColor: colors.surfaceLight + '10' }]}
+        style={[
+          styles.headerBtn, 
+          { backgroundColor: colors.surface,
+      borderColor: colors.border }
+        ]}
       >
         <LucideIcons.Bell size={20} color={colors.text} />
         <View style={styles.notifBadge} />
       </TouchableOpacity>
+      
       <TouchableOpacity 
         onPress={() => router.push('/profile')}
-        style={[styles.headerBtn, { backgroundColor: colors.surfaceLight + '10' }]}
+        style={[
+          styles.headerBtn, 
+          { backgroundColor: colors.surface,
+      borderColor: colors.border }
+        ]}
       >
         <LucideIcons.User size={20} color={colors.text} />
       </TouchableOpacity>
@@ -138,6 +147,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
+          headerShown: false,
           title: role === 'customer' ? 'Home' : role === 'admin' ? 'Admin' : 'Dashboard',
           tabBarIcon: ({ color }) => <IconByName name="LayoutDashboard" color={color} />,
         }}
@@ -208,7 +218,7 @@ export default function TabLayout() {
     {role === 'merchant' && (
       <TouchableOpacity 
         style={styles.fab}
-        onPress={() => Linking.openURL('https://wa.me/917357077395')} // Merchant Support Number
+        onPress={() => router.push('/support/support_screen' as any)}
       >
         <LucideIcons.MessageCircle size={24} color="#FFF" />
       </TouchableOpacity>

@@ -1,398 +1,1000 @@
 import React from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
-import { 
-  User, 
-  Settings, 
-  CreditCard, 
-  ShieldCheck, 
-  LogOut,
-  ChevronRight,
-  HelpCircle,
-  Users,
+
+import {
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+
+import {
   Briefcase,
-  Store,
+  ChevronRight,
+  CreditCard,
+  HelpCircle,
+  LogOut,
   RefreshCw,
-  Zap,
-  Activity
+  Settings,
+  ShieldCheck,
+  Store,
+  User,
+  Users,
 } from 'lucide-react-native';
-import { Spacing, Typography } from '@/constants/Theme';
-import { LinearGradient } from 'expo-linear-gradient';
-import { router, Stack } from 'expo-router';
-import { MOCK_SESSION } from '@/constants/Auth';
-import { useApp } from '@/lib/AppContext';
-import { supabase } from '@/lib/supabase';
-import { IdentityWidget, SubscriptionWidget } from '@/components/ProfileWidgets';
-import { GlassCard } from '@/components/GlassCard';
+
+import { Stack, router } from 'expo-router';
+
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { supabase } from '@/lib/supabase';
+import { useApp } from '@/lib/AppContext';
+
+import { MOCK_SESSION } from '@/constants/Auth';
+
+import { GlassCard } from '@/components/GlassCard';
+
+import {
+  IdentityWidget,
+  SubscriptionWidget,
+} from '@/components/ProfileWidgets';
+
+// ======================================================
+// PROFILE SCREEN
+// Cleaner hierarchy
+// Reduced top clutter
+// Combined identity + status
+//
+// Previous layout stacked random cards vertically
+// like unpaid electricity bills.
+//
+// Now it actually breathes.
+// ======================================================
+
 export default function ProfileScreen() {
-  const { colors, t, theme, userRole: role, setUserRole, session, profile, businessType } = useApp();
+  const {
+    colors,
+    theme,
+    userRole,
+    setUserRole,
+    session,
+    profile,
+    businessType,
+  } = useApp();
+
+  // ====================================================
+  // ROLE SWITCHER
+  // ====================================================
 
   const switchRole = () => {
     Alert.alert(
-      t('switch_role_title' as any) || "Switch Account Profile",
-      "Select a profile mode for local development and testing:",
+      'Switch Account Profile',
+      'Select a role for local development & testing.',
       [
         {
-          text: "🎓 Student / Resident",
-          onPress: () => {
-            setUserRole('customer');
-            Alert.alert("Success", "Switched to Student/Resident view.");
-          }
+          text: 'Student / Resident',
+          onPress: () =>
+            setUserRole('customer'),
         },
         {
-          text: "🏪 Merchant Partner",
-          onPress: () => {
-            setUserRole('merchant');
-            Alert.alert("Success", "Switched to Merchant Partner view.");
-          }
+          text: 'Merchant Partner',
+          onPress: () =>
+            setUserRole('merchant'),
         },
         {
-          text: "🛡️ System Administrator",
-          onPress: () => {
-            setUserRole('admin');
-            Alert.alert("Success", "Switched to System Administrator view.");
-          }
+          text: 'System Administrator',
+          onPress: () =>
+            setUserRole('admin'),
         },
         {
-          text: t('cancel'),
-          style: "cancel"
-        }
+          text: 'Cancel',
+          style: 'cancel',
+        },
       ]
     );
   };
+
+  // ====================================================
+  // LOGOUT
+  // ====================================================
 
   const handleLogout = async () => {
     Alert.alert(
-      t('logout'),
-      t('confirm_logout_desc'),
+      'Logout',
+      'Are you sure you want to sign out?',
       [
-        { text: t('cancel'), style: "cancel" },
-        { 
-          text: t('logout'), 
-          style: "destructive",
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Logout',
+          style: 'destructive',
           onPress: async () => {
-            const { error } = await supabase.auth.signOut();
-            if (error) Alert.alert("Error", error.message);
-          }
-        }
+            await supabase.auth.signOut();
+          },
+        },
       ]
     );
   };
 
-  const handleItemPress = (item: any) => {
-    if (item.route) {
-      router.push(item.route as any);
-    } else {
-      if (item.id === '2') {
-        if (role === 'customer') {
-          router.push('/profile/ledger' as any);
-        } else {
-          router.push('/settings/platform-ledger' as any);
-        }
-      } else if (item.id === 'rewards') {
-        Alert.alert(
-          t('my_rewards' as any) || "My Rewards",
-          "🎉 You have 250 SevaCoins!\n\nUse your coins to redeem laundry coupons or cafe discounts in Kota student zone.",
-          [{ text: t('cool') }]
-        );
-      } else if (item.id === 'addresses') {
-        Alert.alert(
-          t('saved_addresses' as any) || "Saved Addresses",
-          "📍 Hostel 3, Room 102 (Default)\n📍 Library Hall A, Seat 4\n\nYou can configure dynamic delivery pins during checkout.",
-          [{ text: t('cool') }]
-        );
-      } else if (item.id === '4') {
-        Alert.alert(
-          t('help_center') || "Help Center",
-          "💬 Need help?\n\nReach out to us at support@sevastack.org or connect with your PG hostel manager.",
-          [{ text: t('cool') }]
-        );
-      } else if (item.id === '5') {
-        Alert.alert(
-          t('privacy_policy') || "Privacy Policy",
-          "🔒 Privacy & Safety\n\nYour data is locally protected on SevaStack and shared only with verified campus merchants.",
-          [{ text: t('cool') }]
-        );
-      }
-    }
-  };
+  // ====================================================
+  // PROFILE SECTIONS
+  // ====================================================
 
   const PROFILE_SECTIONS = [
     {
-      title: t('personal'),
       items: [
-        { id: '1', label: t('my_profile'), icon: User, route: '/settings/edit-profile' },
-        { id: '2', label: t('payment_history'), icon: CreditCard },
-      ]
+        {
+          id: 'profile',
+          label: 'My Profile',
+          icon: User,
+          route:
+            '/settings/edit-profile',
+        },
+        {
+          id: 'payments',
+          label: 'Payment History',
+          icon: CreditCard,
+        },
+      ],
     },
-    ...(role === 'merchant' ? [{
-      title: t('business_mgmt'),
-      items: [
-        { id: 'settings', label: t('settings'), icon: Settings, route: '/settings' },
-        { id: 'staff', label: t('staff_members'), icon: Users, route: '/(tabs)/staff' },
-        { id: 'catalog', label: t('catalog'), icon: Settings, route: '/catalog' },
-        { id: 'stats', label: t('revenue_analytics'), icon: Briefcase, route: '/profile/performance' },
-      ]
-    }] : role === 'admin' ? [{
-      title: t('Platform Control' as any),
-      items: [
-        { id: 'settings', label: t('settings'), icon: Settings, route: '/settings' },
-        { id: 'merchants', label: t('Platform Ledger' as any), icon: Store, route: '/settings/platform-ledger' },
-        { id: 'billing', label: t('Platform Billing Plans' as any), icon: CreditCard, route: '/settings/billing-plans' },
-      ]
-    }] : [{
-      title: t('customer_perks' as any),
-      items: [
-        { id: 'settings', label: t('settings'), icon: Settings, route: '/settings' },
-        { id: 'rewards', label: t('my_rewards' as any), icon: Store },
-        { id: 'addresses', label: t('saved_addresses' as any), icon: ShieldCheck },
-      ]
-    }]),
+
+    ...(userRole === 'merchant'
+      ? [
+          {
+            title:
+              'Business Management',
+
+            items: [
+              {
+                id: 'settings',
+                label: 'Settings',
+                icon: Settings,
+                route: '/settings',
+              },
+
+              {
+                id: 'staff',
+                label:
+                  'Staff Members',
+                icon: Users,
+                route:
+                  '/(tabs)/staff',
+              },
+
+              {
+                id: 'catalog',
+                label: 'Catalog',
+                icon: Store,
+                route:
+                  '/catalog',
+              },
+
+              {
+                id: 'analytics',
+                label:
+                  'Revenue Analytics',
+                icon: Briefcase,
+                route:
+                  '/profile/performance',
+              },
+            ],
+          },
+        ]
+      : userRole === 'admin'
+      ? [
+          {
+            title:
+              'Platform Control',
+
+            items: [
+              {
+                id: 'settings',
+                label: 'Settings',
+                icon: Settings,
+                route: '/settings',
+              },
+
+              {
+                id: 'ledger',
+                label:
+                  'Platform Ledger',
+                icon: Store,
+                route:
+                  '/settings/platform-ledger',
+              },
+
+              {
+                id: 'billing',
+                label:
+                  'Billing Plans',
+                icon: CreditCard,
+                route:
+                  '/settings/billing-plans',
+              },
+            ],
+          },
+        ]
+      : [
+          {
+            title:
+              'Student Perks',
+
+            items: [
+              {
+                id: 'settings',
+                label: 'Settings',
+                icon: Settings,
+                route: '/settings',
+              },
+
+              {
+                id: 'rewards',
+                label:
+                  'My Rewards',
+                icon: Store,
+              },
+
+              {
+                id: 'addresses',
+                label:
+                  'Saved Addresses',
+                icon: ShieldCheck,
+              },
+            ],
+          },
+        ]),
+
     {
-      title: t('support_legal'),
+      title:
+        'Support & Legal',
+
       items: [
-        { id: '4', label: t('help_center'), icon: HelpCircle },
-        { id: '5', label: t('privacy_policy'), icon: ShieldCheck },
-      ]
-    }
+        {
+          id: 'help',
+          label:
+            'Help Center',
+          icon: HelpCircle,
+        },
+
+        {
+          id: 'privacy',
+          label:
+            'Privacy Policy',
+          icon: ShieldCheck,
+        },
+      ],
+    },
   ];
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top', 'left', 'right']}>
-      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-      <Stack.Screen options={{ 
-        title: 'Profile & Settings', 
-        headerStyle: { backgroundColor: colors.background },
-        headerTitleStyle: { color: colors.text, fontWeight: '800' },
-        headerTintColor: colors.primary
-      }} />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
-        {/* Header Profile Info */}
-        <IdentityWidget 
-          user={{ 
-            name: profile?.business_name || session?.user?.user_metadata?.full_name || MOCK_SESSION.name, 
-            email: session?.user?.email || MOCK_SESSION.email, 
-            avatar: session?.user?.user_metadata?.avatar_url || (role === 'merchant' 
-              ? 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&q=80' 
-              : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80')
-          }} 
-          role={role} 
-          onEdit={() => router.push('/settings/edit-profile')} 
-        />
+  // ====================================================
+  // ITEM ACTIONS
+  // ====================================================
 
-        {/* Business Hub Badge Area */}
-        {role === 'merchant' && (
-          <View style={styles.businessBadgeRow}>
-             <GlassCard style={[styles.businessBadge, { backgroundColor: colors.surface, borderColor: colors.primary + '15' }]}>
-                <View style={[styles.activeDot, { backgroundColor: colors.success }]} />
-                <Text style={[styles.businessBadgeText, { color: colors.text }]}>{t(businessType as any)} {t('hub_active' as any)}</Text>
-             </GlassCard>
-             <TouchableOpacity 
-               style={[styles.quickSettingsBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-               onPress={() => router.push('/settings')}
-               activeOpacity={0.7}
+  const handleItemPress = (
+    item: any
+  ) => {
+    if (item.route) {
+      router.push(item.route as any);
+      return;
+    }
+
+    if (item.id === 'payments') {
+      router.push(
+        userRole ===
+          'customer'
+          ? '/profile/ledger'
+          : '/settings/platform-ledger'
+      );
+
+      return;
+    }
+
+    if (item.id === 'rewards') {
+      Alert.alert(
+        'My Rewards',
+        'You currently have 250 SevaCoins.\n\nRedeem them for cafe discounts, laundry coupons, and partner offers.'
+      );
+
+      return;
+    }
+
+    if (item.id === 'addresses') {
+      Alert.alert(
+        'Saved Addresses',
+        'Hostel Block A, Room 102\nLibrary Hall Seat B-4'
+      );
+
+      return;
+    }
+
+    if (item.id === 'help') {
+      Alert.alert(
+        'Help Center',
+        'Need support?\n\nContact support@sevastack.org'
+      );
+
+      return;
+    }
+
+    if (item.id === 'privacy') {
+      Alert.alert(
+        'Privacy Policy',
+        'Your information is protected and shared only with verified campus partners.'
+      );
+    }
+  };
+
+  return (
+    <SafeAreaView
+      style={[
+        styles.safeArea,
+        {
+          backgroundColor:
+            colors.background,
+        },
+      ]}
+      edges={['left', 'right']}
+    >
+      <StatusBar
+        style={
+          theme === 'dark'
+            ? 'light'
+            : 'dark'
+        }
+      />
+
+      <Stack.Screen
+        options={{
+          title: 'Profile',
+
+          headerStyle: {
+            backgroundColor:
+              colors.background,
+          },
+
+          headerTitleStyle: {
+            color:
+              colors.text,
+            fontWeight:
+              '800',
+          },
+
+          headerTintColor:
+            colors.primary,
+        }}
+      />
+
+      <ScrollView
+        showsVerticalScrollIndicator={
+          false
+        }
+        contentContainerStyle={
+          styles.content
+        }
+      >
+        {/* ========================================= */}
+        {/* PROFILE HERO */}
+        {/* ========================================= */}
+
+        <GlassCard
+          style={[
+            styles.profileHero,
+            {
+              borderColor:
+                colors.border,
+            },
+          ]}
+        >
+          <IdentityWidget
+            user={{
+              name:
+                profile?.business_name ||
+                session?.user
+                  ?.user_metadata
+                  ?.full_name ||
+                MOCK_SESSION.name,
+
+              email:
+                session?.user
+                  ?.email ||
+                MOCK_SESSION.email,
+
+              avatar:
+                session?.user
+                  ?.user_metadata
+                  ?.avatar_url ||
+                (userRole ===
+                'merchant'
+                  ? 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&q=80'
+                  : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80'),
+            }}
+            role={userRole}
+            onEdit={() =>
+              router.push(
+                '/settings/edit-profile'
+              )
+            }
+          />
+
+          {/* INLINE STATUS */}
+
+          <View
+            style={[
+              styles.inlineRow,
+              {
+                borderTopColor:
+                  `${colors.border}30`,
+              },
+            ]}
+          >
+            {userRole ===
+              'merchant' && (
+              <View
+                style={[
+                  styles.inlineBadge,
+                  {
+                    backgroundColor:
+                      `${colors.primary}10`,
+                  },
+                ]}
               >
-                <Settings size={20} color={colors.text} />
-             </TouchableOpacity>
+                <View
+                  style={[
+                    styles.liveDot,
+                    {
+                      backgroundColor:
+                        colors.success,
+                    },
+                  ]}
+                />
+
+                <Text
+                  style={[
+                    styles.inlineBadgeText,
+                    {
+                      color:
+                        colors.text,
+                    },
+                  ]}
+                >
+                  {
+                    businessType
+                  }{' '}
+                  Hub
+                </Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              activeOpacity={
+                0.8
+              }
+              onPress={() =>
+                router.push(
+                  '/settings'
+                )
+              }
+              style={[
+                styles.inlineAction,
+                {
+                  backgroundColor:
+                    colors.surface,
+
+                  borderColor:
+                    colors.border,
+                },
+              ]}
+            >
+              <Settings
+                size={16}
+                color={
+                  colors.text
+                }
+              />
+
+              <Text
+                style={[
+                  styles.inlineActionText,
+                  {
+                    color:
+                      colors.text,
+                  },
+                ]}
+              >
+                Settings
+              </Text>
+            </TouchableOpacity>
           </View>
+        </GlassCard>
+
+        {/* ========================================= */}
+        {/* SUBSCRIPTION */}
+        {/* ========================================= */}
+
+        {userRole ===
+          'merchant' && (
+          <SubscriptionWidget />
         )}
 
-        {/* Subscription Info Card */}
-        {role === 'merchant' && <SubscriptionWidget />}
+        {/* ========================================= */}
+        {/* ROLE SWITCH */}
+        {/* ========================================= */}
 
-        {/* Role Switcher Dynamic Ribbon */}
-        <TouchableOpacity style={styles.switcherCard} onPress={switchRole} activeOpacity={0.9}>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={switchRole}
+          style={
+            styles.switcherWrap
+          }
+        >
           <LinearGradient
-            colors={[colors.primary, colors.accent]}
-            style={styles.switcherGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+            colors={[
+              colors.primary,
+              colors.accent,
+            ]}
+            style={
+              styles.switcher
+            }
+            start={{
+              x: 0,
+              y: 0,
+            }}
+            end={{
+              x: 1,
+              y: 0,
+            }}
           >
-            <View style={styles.switcherContent}>
-              <RefreshCw size={18} color="#FFF" />
-              <View>
-                <Text style={styles.switcherTitle}>
-                  {t('switch_role_title' as any)}
-                </Text>
-                <Text style={styles.switcherSub}>{t('active_role_prefix' as any)}: {t(role as any).toUpperCase()}</Text>
-              </View>
+            <View
+              style={
+                styles.switcherIcon
+              }
+            >
+              <RefreshCw
+                size={18}
+                color="#FFF"
+              />
             </View>
+
+            <View
+              style={{
+                flex: 1,
+              }}
+            >
+              <Text
+                style={
+                  styles.switcherTitle
+                }
+              >
+                Switch Account
+                Profile
+              </Text>
+
+              <Text
+                style={
+                  styles.switcherSub
+                }
+              >
+                Active role:{' '}
+                {userRole.toUpperCase()}
+              </Text>
+            </View>
+
+            <ChevronRight
+              size={18}
+              color="#FFF"
+            />
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Section List Items */}
-        {PROFILE_SECTIONS.map((section, idx) => (
-          <View key={idx} style={styles.sectionContainer}>
-            <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>{section.title}</Text>
-            <GlassCard style={{ padding: 0, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
-              {section.items.map((item, itemIdx) => (
-                <TouchableOpacity 
-                  key={item.id} 
-                  style={[
-                    styles.menuItem,
-                    itemIdx < section.items.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border + '15' }
-                  ]}
-                  onPress={() => handleItemPress(item)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.menuItemLeft}>
-                    <View style={[styles.menuIconContainer, { backgroundColor: colors.primary + '08' }]}>
-                      <item.icon size={18} color={colors.textMuted} />
-                    </View>
-                    <Text style={[styles.menuLabel, { color: colors.text }]}>{item.label}</Text>
-                  </View>
-                  <ChevronRight size={16} color={colors.textMuted} />
-                </TouchableOpacity>
-              ))}
-            </GlassCard>
-          </View>
-        ))}
+        {/* ========================================= */}
+        {/* SECTION LISTS */}
+        {/* ========================================= */}
 
-        {/* Logout Control */}
-        <TouchableOpacity style={[styles.logoutBtn, { borderColor: colors.error + '25' }]} onPress={handleLogout} activeOpacity={0.7}>
-          <LogOut size={18} color={colors.error} />
-          <Text style={[styles.logoutText, { color: colors.error }]}>{t('sign_out_account')}</Text>
+        {PROFILE_SECTIONS.map(
+          (
+            section,
+            index
+          ) => (
+            <View
+              key={index}
+              style={
+                styles.sectionWrap
+              }
+            >
+              {!!section.title && (
+                <Text
+                  style={[
+                    styles.sectionLabel,
+                    {
+                      color:
+                        colors.textMuted,
+                    },
+                  ]}
+                >
+                  {
+                    section.title
+                  }
+                </Text>
+              )}
+
+              <GlassCard
+                style={[
+                  styles.sectionCard,
+                  {
+                    borderColor:
+                      colors.border,
+                  },
+                ]}
+              >
+                {section.items.map(
+                  (
+                    item,
+                    itemIndex
+                  ) => (
+                    <TouchableOpacity
+                      key={
+                        item.id
+                      }
+                      activeOpacity={
+                        0.75
+                      }
+                      onPress={() =>
+                        handleItemPress(
+                          item
+                        )
+                      }
+                      style={[
+                        styles.menuRow,
+
+                        itemIndex <
+                          section
+                            .items
+                            .length -
+                            1 && {
+                          borderBottomWidth:
+                            1,
+
+                          borderBottomColor:
+                            `${colors.border}28`,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={
+                          styles.menuLeft
+                        }
+                      >
+                        <View
+                          style={[
+                            styles.menuIconWrap,
+                            {
+                              backgroundColor:
+                                `${colors.primary}10`,
+                            },
+                          ]}
+                        >
+                          <item.icon
+                            size={
+                              18
+                            }
+                            color={
+                              colors.primary
+                            }
+                          />
+                        </View>
+
+                        <Text
+                          style={[
+                            styles.menuText,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          {
+                            item.label
+                          }
+                        </Text>
+                      </View>
+
+                      <ChevronRight
+                        size={16}
+                        color={
+                          colors.textMuted
+                        }
+                      />
+                    </TouchableOpacity>
+                  )
+                )}
+              </GlassCard>
+            </View>
+          )
+        )}
+
+        {/* ========================================= */}
+        {/* LOGOUT */}
+        {/* ========================================= */}
+
+                <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={handleLogout}
+          style={[
+            styles.logoutBtn,
+            {
+              backgroundColor: `${colors.error}12`, // Added theme-aware background tint
+              borderColor: `${colors.error}22`,
+            },
+          ]}
+        >
+          <LogOut
+            size={18}
+            color={colors.error}
+          />
+
+          <Text
+            style={[
+              styles.logoutText,
+              {
+                color: colors.error,
+              },
+            ]}
+          >
+            Sign Out Account
+          </Text>
         </TouchableOpacity>
 
-        <Text style={[styles.versionTxt, { color: colors.textMuted }]}>SevaStackKota • Version 2.4.0</Text>
-        
-        <View style={{ height: 100 }} />
+        {/* ========================================= */}
+        {/* VERSION */}
+        {/* ========================================= */}
+
+        <Text
+          style={[
+            styles.version,
+            {
+              color:
+                colors.textMuted,
+            },
+          ]}
+        >
+          SevaStack • Version
+          2.4.0
+        </Text>
+
+        <View
+          style={{
+            height: 120,
+          }}
+        />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+// ======================================================
+// STYLES
+// ======================================================
+
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
   },
-  scrollContent: {
-    padding: Spacing.md,
+
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 40,
   },
-  businessBadgeRow: {
-    marginBottom: Spacing.xl,
-    flexDirection: 'row',
+
+  // ====================================================
+  // HERO
+  // ====================================================
+
+  profileHero: {
+    padding: 0,
+    overflow: 'hidden',
+    borderRadius: 28,
+    borderWidth: 1,
+    marginBottom: 18,
   },
-  businessBadge: {
-    flex: 1,
+
+  inlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 20,
-    gap: 10,
-    borderWidth: 1,
+    justifyContent:
+      'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 16,
+    borderTopWidth: 1,
   },
-  activeDot: {
+
+  inlineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+  },
+
+  inlineBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    marginLeft: 8,
+  },
+
+  liveDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
   },
-  businessBadgeText: {
-    fontSize: 13,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  quickSettingsBtn: {
-    width: 50,
-    height: 50,
-    borderRadius: 20,
-    justifyContent: 'center',
+
+  inlineAction: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 12,
+    height: 38,
+    paddingHorizontal: 12,
+    borderRadius: 12,
     borderWidth: 1,
   },
-  switcherCard: {
-    marginBottom: Spacing.xl,
-    borderRadius: 24,
-    overflow: 'hidden',
+
+  inlineActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: 6,
+  },
+
+  // ====================================================
+  // SWITCHER
+  // ====================================================
+
+  switcherWrap: {
+    marginTop: 2,
+    marginBottom: 20,
+
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
+        shadowColor:
+          '#000',
+        shadowOffset: {
+          width: 0,
+          height: 6,
+        },
+        shadowOpacity: 0.12,
+        shadowRadius: 12,
       },
+
       android: {
-        elevation: 2,
+        elevation: 4,
       },
     }),
   },
-  switcherGradient: {
+
+  switcher: {
+    borderRadius: 24,
     padding: 16,
-  },
-  switcherContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
   },
+
+  switcherIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor:
+      'rgba(255,255,255,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+
   switcherTitle: {
     color: '#FFF',
     fontSize: 15,
     fontWeight: '800',
+    marginBottom: 2,
   },
+
   switcherSub: {
-    color: 'rgba(255,255,255,0.75)',
+    color:
+      'rgba(255,255,255,0.82)',
     fontSize: 11,
     fontWeight: '600',
-    marginTop: 1,
   },
-  sectionContainer: {
-    marginBottom: Spacing.xl,
+
+  // ====================================================
+  // SECTIONS
+  // ====================================================
+
+  sectionWrap: {
+    marginBottom: 18,
   },
-  sectionTitle: {
-    fontSize: 11,
+
+  sectionLabel: {
+    fontSize: 10,
     fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-    marginBottom: Spacing.md,
+    textTransform:
+      'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: 10,
     marginLeft: 4,
   },
-  menuItem: {
+
+  sectionCard: {
+    padding: 0,
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+  },
+
+  menuRow: {
     flexDirection: 'row',
+    justifyContent:
+      'space-between',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 16,
   },
-  menuItemLeft: {
+
+  menuLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    flex: 1,
   },
-  menuIconContainer: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+
+  menuIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 14,
   },
-  menuLabel: {
+
+  menuText: {
     fontSize: 14,
     fontWeight: '700',
+    letterSpacing: -0.1,
   },
+
+  // ====================================================
+  // LOGOUT
+  // ====================================================
+
   logoutBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    height: 52,
-    borderRadius: 16,
+    height: 54,
+    width: '50%',
+    alignSelf: 'center',
+    borderRadius: 18,
     borderWidth: 1,
-    marginTop: Spacing.md,
+    justifyContent:
+      'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    marginTop: 8,
   },
+
   logoutText: {
+    fontSize: 14,
     fontWeight: '800',
-    fontSize: 15,
+    marginLeft: 8,
   },
-  versionTxt: {
+
+  // ====================================================
+  // VERSION
+  // ====================================================
+
+  version: {
     textAlign: 'center',
     fontSize: 11,
     fontWeight: '600',
-    marginTop: Spacing.xl,
-  }
+    marginTop: 22,
+    opacity: 0.8,
+  },
 });

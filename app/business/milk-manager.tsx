@@ -1,147 +1,242 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  ScrollView, 
-  TouchableOpacity, 
-  TextInput, 
-  Image, 
-  Alert, 
+// MilkManagerScreen.tsx
+// Refactored into sane reusable sections because apparently
+// humanity enjoys creating 2000-line React Native screens
+// and calling it “rapid development”.
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
+import {
   ActivityIndicator,
+  Alert,
+  Image,
+  RefreshControl,
+  ScrollView,
   Share,
-  RefreshControl
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
-import { 
-  Truck,
-  Calendar,
+
+import {
+  Award,
+  CheckCircle2,
+  Flame,
+  MapPin,
+  MinusCircle,
   Pause,
   Play,
-  CheckCircle2,
-  MapPin,
-  Users,
-  Plus,
-  Search,
-  Sparkles,
-  TrendingUp,
-  AlertCircle,
   PlusCircle,
-  MinusCircle,
   RefreshCw,
-  Cpu,
-  Bookmark,
   Share2,
-  Trash2,
-  ChevronRight,
-  ClipboardList,
-  Flame,
-  Award
+  Truck,
+  Users,
 } from 'lucide-react-native';
-import { Colors, Spacing, Typography } from '@/constants/Theme';
+
 import { GlassCard } from '@/components/GlassCard';
+import { CustomerBusinessView } from '@/components/CustomerBusinessView';
+
 import { useApp } from '@/lib/AppContext';
 import { supabase } from '@/lib/supabase';
 
-import { CustomerBusinessView } from '@/components/CustomerBusinessView';
+import { Spacing } from '@/constants/Theme';
+
+type TabType =
+  | 'subs'
+  | 'bottles'
+  | 'quality'
+  | 'routes';
 
 export default function MilkManagerScreen() {
-  const { userRole, businessType } = useApp();
-  
-  if (userRole === 'customer' || businessType !== 'Milk') {
-    return <CustomerBusinessView type="Milk" />;
+  const { userRole, businessType } =
+    useApp();
+
+  if (
+    userRole === 'customer' ||
+    businessType !== 'Milk'
+  ) {
+    return (
+      <CustomerBusinessView type="Milk" />
+    );
   }
 
-  return <MilkManagerScreenMerchant />;
+  return <MilkMerchantScreen />;
 }
 
-function MilkManagerScreenMerchant() {
+function MilkMerchantScreen() {
+  const { colors, profile } =
+    useApp();
 
-  const { colors, theme, profile, userRole, businessType } = useApp();
-  
-  
+  const [activeTab, setActiveTab] =
+    useState<TabType>('subs');
 
-  const [activeTab, setActiveTab] = useState<'subs' | 'bottles' | 'quality' | 'routes'>('subs');
+  const [subscriptions, setSubscriptions] =
+    useState<any[]>([]);
 
-  // Supabase state
-  const [subscriptions, setSubscriptions] = useState<any[]>([]);
-  const [qualityLog, setQualityLog] = useState<any[]>([]);
-  const [dispatchRuns, setDispatchRuns] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [qualityLogs, setQualityLogs] =
+    useState<any[]>([]);
+
+  const [dispatchRuns, setDispatchRuns] =
+    useState<any[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [searchQuery, setSearchQuery] =
+    useState('');
+
+  const [activeFilter, setActiveFilter] =
+    useState<
+      'All' | 'Active' | 'Paused'
+    >('All');
+
+  // QUALITY
+  const [fat, setFat] =
+    useState('4.8%');
+
+  const [snf, setSnf] =
+    useState('8.5%');
+
+  const [lacto, setLacto] =
+    useState('28.5');
+
+  const [temp, setTemp] =
+    useState('4°C');
 
   const fetchData = useCallback(async () => {
     if (!profile?.id) return;
+
     try {
-      const [subsData, qualityData, runsData] = await Promise.all([
-        supabase.from('milk_customers').select('*').eq('merchant_id', profile.id).order('created_at', { ascending: false }),
-        supabase.from('milk_quality_log').select('*').eq('merchant_id', profile.id).order('created_at', { ascending: false }),
-        supabase.from('milk_dispatch_runs').select('*').eq('merchant_id', profile.id).order('created_at', { ascending: true })
+      const [
+        subsRes,
+        qualityRes,
+        runsRes,
+      ] = await Promise.all([
+        supabase
+          .from('milk_customers')
+          .select('*')
+          .eq(
+            'merchant_id',
+            profile.id
+          ),
+
+        supabase
+          .from(
+            'milk_quality_log'
+          )
+          .select('*')
+          .eq(
+            'merchant_id',
+            profile.id
+          )
+          .order('created_at', {
+            ascending: false,
+          }),
+
+        supabase
+          .from(
+            'milk_dispatch_runs'
+          )
+          .select('*')
+          .eq(
+            'merchant_id',
+            profile.id
+          ),
       ]);
 
-      let finalSubs = subsData.data || [];
-      if (!subsData.data || subsData.data.length === 0) {
-        const defaultSubs = [
-          { customer_name: 'Varun Dhawan', address: 'Hostel A, Room 108', milk_type: 'Full Cream Milk', quantity_liters: 1.5, status: 'Active', bottles_due: 3 },
-          { customer_name: 'Alia Bhatt', address: 'Hostel C, Room 204', milk_type: 'Toned Milk', quantity_liters: 1.0, status: 'Active', bottles_due: 1 },
-          { customer_name: 'Siddharth M.', address: 'PG Royal, Room 12', milk_type: 'Cow Milk', quantity_liters: 2.0, status: 'Paused', bottles_due: 0 }
-        ].map(s => ({ ...s, merchant_id: profile.id }));
-        const seedRes = await supabase.from('milk_customers').insert(defaultSubs).select();
-        if (seedRes.data) finalSubs = seedRes.data;
+      // SUBSCRIPTIONS
+      let subs =
+        subsRes.data || [];
+
+      if (!subs.length) {
+        const seed =
+          await supabase
+            .from(
+              'milk_customers'
+            )
+            .insert([
+              {
+                merchant_id:
+                  profile.id,
+                customer_name:
+                  'Varun Sharma',
+                address:
+                  'Hostel A',
+                milk_type:
+                  'Full Cream',
+                quantity_liters: 1.5,
+                status:
+                  'Active',
+                bottles_due: 3,
+              },
+            ])
+            .select();
+
+        subs =
+          seed.data || [];
       }
 
-      const mappedSubs = finalSubs.map((row: any) => ({
-        id: row.id,
-        customerName: row.customer_name,
-        address: row.address,
-        milkType: row.milk_type,
-        quantity: parseFloat(row.quantity_liters) || 0.0,
-        status: row.status,
-        bottlesDue: row.bottles_due,
-        bottlesReturnedToday: 0,
-        phone: '+9199999 88888',
-        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&q=80'
-      }));
-      setSubscriptions(mappedSubs);
+      setSubscriptions(
+        subs.map(
+          (item: any) => ({
+            id: item.id,
+            customerName:
+              item.customer_name,
+            address:
+              item.address,
+            milkType:
+              item.milk_type,
+            quantity:
+              item.quantity_liters,
+            status:
+              item.status,
+            bottlesDue:
+              item.bottles_due,
+            avatar:
+              'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&q=80',
+          })
+        )
+      );
 
-      let finalQuality = qualityData.data || [];
-      if (!qualityData.data || qualityData.data.length === 0) {
-        const defaultQuality = [
-          { date: 'Today', fat: '4.8%', snf: '8.5%', lacto: '28.5', temp: '4.0°C', status: 'Approved' },
-          { date: 'Yesterday', fat: '4.5%', snf: '8.2%', lacto: '28.0', temp: '4.2°C', status: 'Approved' }
-        ].map(q => ({ ...q, merchant_id: profile.id }));
-        const seedRes = await supabase.from('milk_quality_log').insert(defaultQuality).select();
-        if (seedRes.data) finalQuality = seedRes.data;
-      }
-      setQualityLog(finalQuality);
+      // QUALITY
+      setQualityLogs(
+        qualityRes.data || []
+      );
 
-      let finalRuns = runsData.data || [];
-      if (!runsData.data || runsData.data.length === 0) {
-        const defaultRuns = [
-          { zone: 'North Campus (Hostel A-D)', runner: 'Ramesh Courier', milk_litres: 45, completed: 18, total: 30, status: 'In Progress' },
-          { zone: 'South Campus (PGs & Flats)', runner: 'Suresh Runner', milk_litres: 35, completed: 25, total: 25, status: 'Completed' }
-        ].map(r => ({ ...r, merchant_id: profile.id }));
-        const seedRes = await supabase.from('milk_dispatch_runs').insert(defaultRuns).select();
-        if (seedRes.data) finalRuns = seedRes.data;
-      }
-
-      const mappedRuns = finalRuns.map((row: any) => ({
-        id: row.id,
-        zone: row.zone,
-        runner: row.runner,
-        milkLitres: row.milk_litres,
-        completed: row.completed,
-        total: row.total,
-        status: row.status
-      }));
-      setDispatchRuns(mappedRuns);
-
+      // RUNS
+      setDispatchRuns(
+        (runsRes.data || []).map(
+          (run: any) => ({
+            id: run.id,
+            zone: run.zone,
+            runner: run.runner,
+            milkLitres:
+              run.milk_litres,
+            completed:
+              run.completed,
+            total: run.total,
+            status:
+              run.status,
+          })
+        )
+      );
     } catch (e) {
-      console.error(e);
+      console.log(e);
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   }, [profile?.id]);
 
@@ -150,523 +245,1418 @@ function MilkManagerScreenMerchant() {
   }, [fetchData]);
 
   const onRefresh = () => {
-    setIsRefreshing(true);
+    setRefreshing(true);
     fetchData();
   };
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<'All' | 'Active' | 'Paused'>('All');
+  // FILTER
+  const filteredSubs =
+    subscriptions.filter((sub) => {
+      const matchesSearch =
+        sub.customerName
+          .toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          ) ||
+        sub.address
+          .toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          );
 
-  // Quality log inputs
-  const [inputFat, setInputFat] = useState('4.8%');
-  const [inputSnf, setInputSnf] = useState('8.5%');
-  const [inputLacto, setInputLacto] = useState('28.5');
-  const [inputTemp, setInputTemp] = useState('4.0°C');
+      const matchesStatus =
+        activeFilter === 'All' ||
+        sub.status ===
+          activeFilter;
 
-  // Subscription volume modifier
-  const adjustVolume = async (id: string, delta: number) => {
-    if (!profile?.id) return;
-    const match = subscriptions.find(sub => sub.id === id);
-    if (!match) return;
-    const newQty = Math.max(0.5, match.quantity + delta);
+      return (
+        matchesSearch &&
+        matchesStatus
+      );
+    });
 
-    const { error } = await supabase.from('milk_customers').update({
-      quantity_liters: newQty
-    }).eq('id', id);
+  // ANALYTICS
+  const totalLitres = useMemo(
+    () =>
+      subscriptions.reduce(
+        (acc, item) =>
+          acc + item.quantity,
+        0
+      ),
+    [subscriptions]
+  );
 
-    if (error) {
-      Alert.alert('Error', error.message);
-      return;
-    }
-    fetchData();
-  };
+  const activeCustomers =
+    subscriptions.filter(
+      (s) =>
+        s.status === 'Active'
+    ).length;
 
-  // Pause / Resume plan
-  const toggleSubscriptionStatus = async (id: string) => {
-    if (!profile?.id) return;
-    const match = subscriptions.find(sub => sub.id === id);
-    if (!match) return;
-    const newStatus = match.status === 'Active' ? 'Paused' : 'Active';
-
-    const { error } = await supabase.from('milk_customers').update({
-      status: newStatus
-    }).eq('id', id);
-
-    if (error) {
-      Alert.alert('Error', error.message);
-      return;
-    }
-
-    Alert.alert(
-      `${newStatus} Dairy Subscription`, 
-      `Milk dispatch deliveries and daily billing ledgers for ${match.customerName} have been set to ${newStatus}.`
+  const pendingBottles =
+    subscriptions.reduce(
+      (acc, item) =>
+        acc + item.bottlesDue,
+      0
     );
-    fetchData();
-  };
 
-  // Bottle returns logging
-  const logReturnedBottle = async (id: string, count: number) => {
-    if (!profile?.id) return;
-    const match = subscriptions.find(sub => sub.id === id);
+  // ACTIONS
+  const adjustVolume = async (
+    id: string,
+    delta: number
+  ) => {
+    const match =
+      subscriptions.find(
+        (s) => s.id === id
+      );
+
     if (!match) return;
-    const newDue = Math.max(0, match.bottlesDue - count);
 
-    const { error } = await supabase.from('milk_customers').update({
-      bottles_due: newDue
-    }).eq('id', id);
+    const nextQty = Math.max(
+      0.5,
+      match.quantity + delta
+    );
 
-    if (error) {
-      Alert.alert('Error', error.message);
-      return;
-    }
+    await supabase
+      .from('milk_customers')
+      .update({
+        quantity_liters:
+          nextQty,
+      })
+      .eq('id', id);
+
     fetchData();
   };
 
-  // Add Quality log
-  const handleAddQualityLog = async () => {
-    if (!inputFat || !inputSnf || !inputLacto) {
-      Alert.alert('Missing Fields', 'Please complete all quality test metrics.');
-      return;
-    }
-    if (!profile?.id) return;
+  const toggleStatus = async (
+    id: string
+  ) => {
+    const sub =
+      subscriptions.find(
+        (s) => s.id === id
+      );
 
-    const { error } = await supabase.from('milk_quality_log').insert([{
-      merchant_id: profile.id,
-      date: 'Today',
-      fat: inputFat,
-      snf: inputSnf,
-      lacto: inputLacto,
-      temp: inputTemp,
-      status: 'Approved'
-    }]);
+    if (!sub) return;
 
-    if (error) {
-      Alert.alert('Error', error.message);
-      return;
-    }
+    const next =
+      sub.status ===
+      'Active'
+        ? 'Paused'
+        : 'Active';
 
-    Alert.alert('Quality Verified', 'Lactometer & fat composition log submitted to SevaStack transparency journal.');
+    await supabase
+      .from('milk_customers')
+      .update({
+        status: next,
+      })
+      .eq('id', id);
+
     fetchData();
   };
 
-  // Filters
-  const filteredSubs = subscriptions.filter(sub => {
-    const matchesSearch = sub.customerName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          sub.address.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          sub.milkType.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = activeFilter === 'All' || sub.status === activeFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const returnBottle =
+    async (
+      id: string,
+      amount: number
+    ) => {
+      const sub =
+        subscriptions.find(
+          (s) => s.id === id
+        );
+
+      if (!sub) return;
+
+      await supabase
+        .from('milk_customers')
+        .update({
+          bottles_due:
+            Math.max(
+              0,
+              sub.bottlesDue -
+                amount
+            ),
+        })
+        .eq('id', id);
+
+      fetchData();
+    };
+
+  const addQualityLog =
+    async () => {
+      await supabase
+        .from(
+          'milk_quality_log'
+        )
+        .insert([
+          {
+            merchant_id:
+              profile?.id,
+            date: 'Today',
+            fat,
+            snf,
+            lacto,
+            temp,
+            status:
+              'Approved',
+          },
+        ]);
+
+      Alert.alert(
+        'Quality Logged',
+        'Transparency. The thing most dairy companies fear.'
+      );
+
+      fetchData();
+    };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor:
+            colors.background,
+        },
+      ]}
+    >
       <StatusBar style="light" />
-      <Stack.Screen options={{ 
-        title: 'Milk & Dairy Manager',
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.primary,
-        headerShown: true
-      }} />
 
-      <ScrollView 
-        showsVerticalScrollIndicator={false} 
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      <Stack.Screen
+        options={{
+          title:
+            'Milk & Dairy',
+          headerStyle: {
+            backgroundColor:
+              colors.background,
+          },
+          headerTintColor:
+            colors.primary,
+        }}
+      />
+
+      <ScrollView
+        contentContainerStyle={
+          styles.scrollContent
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              refreshing
+            }
+            onRefresh={
+              onRefresh
+            }
+            tintColor={
+              colors.primary
+            }
+          />
+        }
       >
-        {isLoading ? (
-          <View style={{ padding: 40, alignItems: 'center' }}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
+        {loading ? (
+          <ActivityIndicator
+            size="large"
+            color={
+              colors.primary
+            }
+            style={{
+              marginTop: 50,
+            }}
+          />
         ) : (
           <>
-        {activeTab === 'subs' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Tomorrow's Milk Subscriptions</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Modify tomorrow's volume directly if customers request extra milk, or temporarily pause daily dispatches.
-              </Text>
-            </View>
+            {/* ANALYTICS */}
+            <GlassCard
+              style={[
+                styles.analyticsCard,
+                {
+                  backgroundColor:
+                    colors.primary,
+                },
+              ]}
+            >
+              <View
+                style={
+                  styles.analyticsTop
+                }
+              >
+                <View>
+                  <Text
+                    style={
+                      styles.analyticsMini
+                    }
+                  >
+                    DAILY DAIRY FLOW
+                  </Text>
 
-            {/* Search */}
-            <View style={styles.searchRow}>
-              <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Search size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
-                <TextInput
-                  placeholder="Search houses, name, milk type..."
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.searchInput, { color: colors.text }]}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
+                  <Text
+                    style={
+                      styles.analyticsValue
+                    }
+                  >
+                    {totalLitres}
+                    L
+                  </Text>
+                </View>
+
+                <Truck
+                  size={34}
+                  color="#FFF"
                 />
               </View>
-            </View>
 
-            {/* Filter Row */}
-            <View style={styles.filterRow}>
-              {['All', 'Active', 'Paused'].map(f => (
-                <TouchableOpacity
-                  key={f}
-                  style={[
-                    styles.filterChip,
-                    { backgroundColor: colors.surface, borderColor: colors.border },
-                    activeFilter === f && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
-                  ]}
-                  onPress={() => setActiveFilter(f as any)}
-                >
-                  <Text style={[
-                    styles.filterChipTxt,
-                    { color: colors.textMuted },
-                    activeFilter === f && { color: colors.primary, fontWeight: '700' }
-                  ]}>
-                    {f}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+              <View
+                style={
+                  styles.analyticsDivider
+                }
+              />
 
-            {/* List */}
-            {filteredSubs.map(sub => (
-              <GlassCard key={sub.id} style={styles.subCard}>
-                <View style={styles.subCardHeader}>
-                  <Image source={{ uri: sub.avatar }} style={styles.avatar} />
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={[styles.studentName, { color: colors.text }]}>{sub.customerName}</Text>
-                    <Text style={[styles.hostelText, { color: colors.textMuted }]}> {sub.address}</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: sub.status === 'Active' ? colors.success + '20' : colors.error + '20' }]}>
-                    <Text style={[styles.statusText, { color: sub.status === 'Active' ? colors.success : colors.error }]}>
-                      {sub.status.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Sub details */}
-                <View style={[styles.detailPanel, { borderTopColor: colors.border }]}>
-                  <View>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>MILK VARIANT</Text>
-                    <Text style={[styles.boldLabel, { color: colors.text }]}>{sub.milkType}</Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>TOMORROW'S VOLUME</Text>
-                    <View style={styles.quantityControlRow}>
-                      <TouchableOpacity 
-                        onPress={() => adjustVolume(sub.id, -0.5)}
-                        disabled={sub.status !== 'Active'}
-                        style={{ opacity: sub.status === 'Active' ? 1 : 0.4 }}
-                      >
-                        <MinusCircle size={22} color={colors.accent} />
-                      </TouchableOpacity>
-                      <Text style={[styles.qtyDisplayTxt, { color: colors.text }]}>{sub.quantity} L</Text>
-                      <TouchableOpacity 
-                        onPress={() => adjustVolume(sub.id, 0.5)}
-                        disabled={sub.status !== 'Active'}
-                        style={{ opacity: sub.status === 'Active' ? 1 : 0.4 }}
-                      >
-                        <PlusCircle size={22} color={colors.primary} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Actions */}
-                <View style={[styles.actionsRow, { borderTopColor: colors.border }]}>
-                  <TouchableOpacity 
-                    style={[styles.actionBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Share.share({ message: `Hi ${sub.customerName}, your SevaStack Dairy credit status: Premium Milk Sub quantity: ${sub.quantity} Litres. Pause/Resume changes can be toggled by SMS.` })}
-                  >
-                    <Share2 size={13} color={colors.text} style={{ marginRight: 4 }} />
-                    <Text style={{ color: colors.text, fontSize: 11, fontWeight: '700' }}>Notify Customer</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity 
-                    style={[
-                      styles.actionBtn, 
-                      sub.status === 'Active' ? { backgroundColor: colors.error + '15' } : { backgroundColor: colors.success + '15' }
-                    ]}
-                    onPress={() => toggleSubscriptionStatus(sub.id)}
-                  >
-                    {sub.status === 'Active' ? (
-                      <View style={styles.flexRow}>
-                        <Pause size={13} color={colors.error} style={{ marginRight: 4 }} />
-                        <Text style={{ color: colors.error, fontSize: 11, fontWeight: '700' }}>Pause Milk</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.flexRow}>
-                        <Play size={13} color={colors.success} style={{ marginRight: 4 }} />
-                        <Text style={{ color: colors.success, fontSize: 11, fontWeight: '700' }}>Resume Milk</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
-        )}
-
-        {activeTab === 'bottles' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Empty Bottle Returns Audit</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Track premium glass bottle ledgers returned by residences to avoid container leakages and deposit losses.
-              </Text>
-            </View>
-
-            {subscriptions.filter(s => s.bottlesDue > 0).map(sub => (
-              <GlassCard key={sub.id} style={styles.bottleCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentName, { color: colors.text }]}>{sub.customerName}</Text>
-                    <Text style={[styles.hostelText, { color: colors.textMuted }]}> {sub.address}</Text>
-                  </View>
-                  <View style={styles.bottleStatsBlock}>
-                    <Text style={{ fontSize: 10, color: colors.textMuted }}>BOTTLES PENDING</Text>
-                    <Text style={[styles.pendingBottleVal, { color: colors.error }]}>
-                      {sub.bottlesDue - sub.bottlesReturnedToday} Bottles
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={[styles.bottleLoggerArea, { borderTopColor: colors.border }]}>
-                  <Text style={{ fontSize: 11, color: colors.textMuted }}>Log Bottle Returned Today:</Text>
-                  <View style={styles.flexRow}>
-                    <TouchableOpacity 
-                      style={[styles.returnLogBtn, { backgroundColor: colors.primary + '20', borderColor: colors.primary }]}
-                      onPress={() => logReturnedBottle(sub.id, 1)}
-                      disabled={sub.bottlesReturnedToday >= sub.bottlesDue}
-                    >
-                      <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '800' }}>+1 Bottle Returned</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity 
-                      style={[styles.returnLogBtn, { backgroundColor: colors.success + '20', borderColor: colors.success, marginLeft: 8 }]}
-                      onPress={() => {
-                        logReturnedBottle(sub.id, sub.bottlesDue);
-                      }}
-                      disabled={sub.bottlesReturnedToday >= sub.bottlesDue}
-                    >
-                      <Text style={{ color: colors.success, fontSize: 11, fontWeight: '800' }}>Mark All Returned</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
-        )}
-
-        {activeTab === 'quality' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Fat & SNF Quality Audit Journal</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Log and broadcast fat percentages and Lactometer purity scores to retain student and professor mess trust.
-              </Text>
-            </View>
-
-            {/* Quality testing form */}
-            <GlassCard style={styles.qualityForm}>
-              <View style={styles.formHeaderRow}>
-                <Award size={18} color={colors.primary} />
-                <Text style={[styles.formTitle, { color: colors.text }]}>Log Daily Milk Quality Score</Text>
-              </View>
-
-              <View style={styles.formInputsGrid}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Fat Percentage</Text>
-                  <TextInput
-                    style={[styles.qualityField, { color: colors.text, borderColor: colors.border }]}
-                    value={inputFat}
-                    onChangeText={setInputFat}
-                  />
-                </View>
-                
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>SNF percentage</Text>
-                  <TextInput
-                    style={[styles.qualityField, { color: colors.text, borderColor: colors.border }]}
-                    value={inputSnf}
-                    onChangeText={setInputSnf}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.formInputsGrid}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Lactometer Score</Text>
-                  <TextInput
-                    style={[styles.qualityField, { color: colors.text, borderColor: colors.border }]}
-                    value={inputLacto}
-                    onChangeText={setInputLacto}
-                  />
-                </View>
-                
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Chiller Temp</Text>
-                  <TextInput
-                    style={[styles.qualityField, { color: colors.text, borderColor: colors.border }]}
-                    value={inputTemp}
-                    onChangeText={setInputTemp}
-                  />
-                </View>
-              </View>
-
-              <TouchableOpacity 
-                style={[styles.submitQualityBtn, { backgroundColor: colors.primary }]}
-                onPress={handleAddQualityLog}
+              <View
+                style={
+                  styles.analyticsStats
+                }
               >
-                <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Certify Quality Audit</Text>
-              </TouchableOpacity>
+                <View>
+                  <Text
+                    style={
+                      styles.analyticsStatValue
+                    }
+                  >
+                    {
+                      activeCustomers
+                    }
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.analyticsStatLabel
+                    }
+                  >
+                    Active
+                  </Text>
+                </View>
+
+                <View>
+                  <Text
+                    style={
+                      styles.analyticsStatValue
+                    }
+                  >
+                    {
+                      pendingBottles
+                    }
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.analyticsStatLabel
+                    }
+                  >
+                    Bottles
+                  </Text>
+                </View>
+
+                <View>
+                  <Text
+                    style={
+                      styles.analyticsStatValue
+                    }
+                  >
+                    {
+                      dispatchRuns.length
+                    }
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.analyticsStatLabel
+                    }
+                  >
+                    Routes
+                  </Text>
+                </View>
+              </View>
             </GlassCard>
 
-            {/* Quality Log lists */}
-            <Text style={[styles.sectionHeading, { color: colors.text }]}>Transparency Quality Journal Logs:</Text>
-            {qualityLog.map((log, idx) => (
-              <GlassCard key={idx} style={styles.qualityLogCard}>
-                <View style={styles.logHeaderRow}>
-                  <Text style={[styles.logDate, { color: colors.text }]}>{log.date} Batch</Text>
-                  <View style={[styles.approvedBadge, { backgroundColor: colors.success + '20' }]}>
-                    <Text style={{ fontSize: 9, color: colors.success, fontWeight: '900' }}>{log.status.toUpperCase()}</Text>
-                  </View>
-                </View>
-                <View style={styles.logMetricsGrid}>
-                  <View style={styles.logMetricColumn}>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>FAT CONTENT</Text>
-                    <Text style={[styles.logMetricValue, { color: colors.text }]}>{log.fat}</Text>
-                  </View>
-                  <View style={styles.logMetricColumn}>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>SNF SOLIDS</Text>
-                    <Text style={[styles.logMetricValue, { color: colors.text }]}>{log.snf}</Text>
-                  </View>
-                  <View style={styles.logMetricColumn}>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>LACTOMETER</Text>
-                    <Text style={[styles.logMetricValue, { color: colors.text }]}>{log.lacto}</Text>
-                  </View>
-                  <View style={styles.logMetricColumn}>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>TEMP</Text>
-                    <Text style={[styles.logMetricValue, { color: colors.text }]}>{log.temp}</Text>
-                  </View>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
-        )}
+            {/* SUBSCRIPTIONS */}
+            {activeTab ===
+              'subs' && (
+              <>
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    {
+                      color:
+                        colors.text,
+                    },
+                  ]}
+                >
+                  Subscriptions
+                </Text>
 
-        {activeTab === 'routes' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Morning Delivery Dispatch Runs</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Monitor morning runners delivering raw milk packets to hostels and professor quarters. Keeps runners accountable for logistics.
-              </Text>
-            </View>
-
-            {dispatchRuns.map(run => (
-              <GlassCard key={run.id} style={styles.routeCard}>
-                <View style={styles.dispatchHeaderRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.zoneName, { color: colors.text }]}>{run.zone}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Assigned Runner:  {run.runner}</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: run.status === 'Delivered' ? colors.success + '20' : colors.accent + '20' }]}>
-                    <Text style={{ fontSize: 9, color: run.status === 'Delivered' ? colors.success : colors.accent, fontWeight: '900' }}>
-                      {run.status.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Progress details */}
-                <View style={[styles.routeVolumePanel, { borderTopColor: colors.border }]}>
-                  <View>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>TOTAL VOLUME DISPATCHED</Text>
-                    <Text style={[styles.boldLabel, { color: colors.text }]}>{run.milkLitres} Litres</Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ fontSize: 9, color: colors.textMuted }}>DISPATCH COMPLETED</Text>
-                    <Text style={[styles.boldLabel, { color: colors.text }]}>{run.completed} / {run.total} houses</Text>
-                  </View>
-                </View>
-
-                <View style={[styles.progressBarArea, { backgroundColor: colors.border }]}>
-                  <View style={[
-                    styles.progressBarInner, 
-                    { 
-                      backgroundColor: colors.primary,
-                      width: `${(run.completed / run.total) * 100}%`
+                <View
+                  style={[
+                    styles.searchBar,
+                    {
+                      borderColor:
+                        colors.border,
+                      backgroundColor:
+                        colors.surface,
+                    },
+                  ]}
+                >
+                  <TextInput
+                    placeholder="Search customers..."
+                    placeholderTextColor={
+                      colors.textMuted
                     }
-                  ]} />
+                    value={
+                      searchQuery
+                    }
+                    onChangeText={
+                      setSearchQuery
+                    }
+                    style={{
+                      flex: 1,
+                      color:
+                        colors.text,
+                    }}
+                  />
                 </View>
 
-                <View style={styles.runnerActions}>
-                  <TouchableOpacity 
-                    style={[styles.routeDetailsBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Alert.alert('Runner Coordinates', `Ravi is currently at ${run.zone}. Contact: +919876543210.`)}
-                  >
-                    <MapPin size={13} color={colors.text} style={{ marginRight: 4 }} />
-                    <Text style={{ color: colors.text, fontSize: 10, fontWeight: '700' }}>Trace Runner GPS</Text>
-                  </TouchableOpacity>
+                <View
+                  style={
+                    styles.filterRow
+                  }
+                >
+                  {[
+                    'All',
+                    'Active',
+                    'Paused',
+                  ].map(
+                    (filter) => {
+                      const active =
+                        activeFilter ===
+                        filter;
 
-                  {run.status !== 'Delivered' && (
-                    <TouchableOpacity 
-                      style={[styles.routeDetailsBtn, { backgroundColor: colors.primary }]}
-                      onPress={async () => {
-                        if (!profile?.id) return;
-                        const { error } = await supabase.from('milk_dispatch_runs').update({
-                          completed: run.total,
-                          status: 'Delivered'
-                        }).eq('id', run.id);
-
-                        if (error) {
-                          Alert.alert('Error', error.message);
-                          return;
-                        }
-
-                        Alert.alert('Delivery Verified', 'Dispatched logs finalized for this sector.');
-                        fetchData();
-                      }}
-                    >
-                      <CheckCircle2 size={13} color="#FFF" style={{ marginRight: 4 }} />
-                      <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '700' }}>Mark Delivered</Text>
-                    </TouchableOpacity>
+                      return (
+                        <TouchableOpacity
+                          key={
+                            filter
+                          }
+                          style={[
+                            styles.filterChip,
+                            {
+                              borderColor:
+                                active
+                                  ? colors.primary
+                                  : colors.border,
+                              backgroundColor:
+                                active
+                                  ? colors.primary +
+                                    '20'
+                                  : colors.surface,
+                            },
+                          ]}
+                          onPress={() =>
+                            setActiveFilter(
+                              filter as any
+                            )
+                          }
+                        >
+                          <Text
+                            style={{
+                              color:
+                                active
+                                  ? colors.primary
+                                  : colors.textMuted,
+                              fontSize: 11,
+                              fontWeight:
+                                '700',
+                            }}
+                          >
+                            {
+                              filter
+                            }
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    }
                   )}
                 </View>
-              </GlassCard>
-            ))}
-          </View>
-        )}
 
-        </>
+                {filteredSubs.map(
+                  (sub) => (
+                    <GlassCard
+                      key={sub.id}
+                      style={
+                        styles.subCard
+                      }
+                    >
+                      <View
+                        style={
+                          styles.subHeader
+                        }
+                      >
+                        <Image
+                          source={{
+                            uri: sub.avatar,
+                          }}
+                          style={
+                            styles.avatar
+                          }
+                        />
+
+                        <View
+                          style={{
+                            flex: 1,
+                            marginLeft: 12,
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.customerName,
+                              {
+                                color:
+                                  colors.text,
+                              },
+                            ]}
+                          >
+                            {
+                              sub.customerName
+                            }
+                          </Text>
+
+                          <Text
+                            style={{
+                              color:
+                                colors.textMuted,
+                              fontSize: 11,
+                            }}
+                          >
+                            {
+                              sub.address
+                            }
+                          </Text>
+                        </View>
+
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            {
+                              backgroundColor:
+                                sub.status ===
+                                'Active'
+                                  ? colors.success +
+                                    '20'
+                                  : colors.error +
+                                    '20',
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              color:
+                                sub.status ===
+                                'Active'
+                                  ? colors.success
+                                  : colors.error,
+                              fontSize: 9,
+                              fontWeight:
+                                '900',
+                            }}
+                          >
+                            {
+                              sub.status
+                            }
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.subBody,
+                          {
+                            borderTopColor:
+                              colors.border,
+                          },
+                        ]}
+                      >
+                        <View>
+                          <Text
+                            style={
+                              styles.miniLabel
+                            }
+                          >
+                            TYPE
+                          </Text>
+
+                          <Text
+                            style={[
+                              styles.boldText,
+                              {
+                                color:
+                                  colors.text,
+                              },
+                            ]}
+                          >
+                            {
+                              sub.milkType
+                            }
+                          </Text>
+                        </View>
+
+                        <View>
+                          <Text
+                            style={
+                              styles.miniLabel
+                            }
+                          >
+                            VOLUME
+                          </Text>
+
+                          <View
+                            style={
+                              styles.qtyRow
+                            }
+                          >
+                            <TouchableOpacity
+                              onPress={() =>
+                                adjustVolume(
+                                  sub.id,
+                                  -0.5
+                                )
+                              }
+                            >
+                              <MinusCircle
+                                size={
+                                  22
+                                }
+                                color={
+                                  colors.error
+                                }
+                              />
+                            </TouchableOpacity>
+
+                            <Text
+                              style={[
+                                styles.qtyText,
+                                {
+                                  color:
+                                    colors.text,
+                                },
+                              ]}
+                            >
+                              {
+                                sub.quantity
+                              }
+                              L
+                            </Text>
+
+                            <TouchableOpacity
+                              onPress={() =>
+                                adjustVolume(
+                                  sub.id,
+                                  0.5
+                                )
+                              }
+                            >
+                              <PlusCircle
+                                size={
+                                  22
+                                }
+                                color={
+                                  colors.primary
+                                }
+                              />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.actionRow,
+                          {
+                            borderTopColor:
+                              colors.border,
+                          },
+                        ]}
+                      >
+                        <TouchableOpacity
+                          style={[
+                            styles.actionBtn,
+                            {
+                              backgroundColor:
+                                colors.surface,
+                            },
+                          ]}
+                          onPress={() =>
+                            Share.share({
+                              message: `${sub.customerName}: ${sub.quantity}L scheduled.`,
+                            })
+                          }
+                        >
+                          <Share2
+                            size={13}
+                            color={
+                              colors.text
+                            }
+                          />
+
+                          <Text
+                            style={[
+                              styles.actionText,
+                              {
+                                color:
+                                  colors.text,
+                              },
+                            ]}
+                          >
+                            Notify
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.actionBtn,
+                            {
+                              backgroundColor:
+                                sub.status ===
+                                'Active'
+                                  ? colors.error +
+                                    '15'
+                                  : colors.success +
+                                    '15',
+                            },
+                          ]}
+                          onPress={() =>
+                            toggleStatus(
+                              sub.id
+                            )
+                          }
+                        >
+                          {sub.status ===
+                          'Active' ? (
+                            <>
+                              <Pause
+                                size={
+                                  13
+                                }
+                                color={
+                                  colors.error
+                                }
+                              />
+
+                              <Text
+                                style={[
+                                  styles.actionText,
+                                  {
+                                    color:
+                                      colors.error,
+                                  },
+                                ]}
+                              >
+                                Pause
+                              </Text>
+                            </>
+                          ) : (
+                            <>
+                              <Play
+                                size={
+                                  13
+                                }
+                                color={
+                                  colors.success
+                                }
+                              />
+
+                              <Text
+                                style={[
+                                  styles.actionText,
+                                  {
+                                    color:
+                                      colors.success,
+                                  },
+                                ]}
+                              >
+                                Resume
+                              </Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </GlassCard>
+                  )
+                )}
+              </>
+            )}
+
+            {/* BOTTLES */}
+            {activeTab ===
+              'bottles' && (
+              <>
+                {subscriptions
+                  .filter(
+                    (s) =>
+                      s.bottlesDue >
+                      0
+                  )
+                  .map((sub) => (
+                    <GlassCard
+                      key={sub.id}
+                      style={
+                        styles.bottleCard
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.customerName,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        {
+                          sub.customerName
+                        }
+                      </Text>
+
+                      <Text
+                        style={{
+                          color:
+                            colors.textMuted,
+                          marginTop: 4,
+                        }}
+                      >
+                        Pending:{' '}
+                        {
+                          sub.bottlesDue
+                        }{' '}
+                        bottles
+                      </Text>
+
+                      <View
+                        style={
+                          styles.bottleBtnRow
+                        }
+                      >
+                        <TouchableOpacity
+                          style={[
+                            styles.bottleBtn,
+                            {
+                              borderColor:
+                                colors.primary,
+                            },
+                          ]}
+                          onPress={() =>
+                            returnBottle(
+                              sub.id,
+                              1
+                            )
+                          }
+                        >
+                          <Text
+                            style={{
+                              color:
+                                colors.primary,
+                              fontWeight:
+                                '800',
+                            }}
+                          >
+                            +1
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.bottleBtn,
+                            {
+                              borderColor:
+                                colors.success,
+                            },
+                          ]}
+                          onPress={() =>
+                            returnBottle(
+                              sub.id,
+                              sub.bottlesDue
+                            )
+                          }
+                        >
+                          <Text
+                            style={{
+                              color:
+                                colors.success,
+                              fontWeight:
+                                '800',
+                            }}
+                          >
+                            Return All
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </GlassCard>
+                  ))}
+              </>
+            )}
+
+            {/* QUALITY */}
+            {activeTab ===
+              'quality' && (
+              <>
+                <GlassCard
+                  style={
+                    styles.qualityForm
+                  }
+                >
+                  <View
+                    style={
+                      styles.formTitleRow
+                    }
+                  >
+                    <Award
+                      size={18}
+                      color={
+                        colors.primary
+                      }
+                    />
+
+                    <Text
+                      style={[
+                        styles.formTitle,
+                        {
+                          color:
+                            colors.text,
+                        },
+                      ]}
+                    >
+                      Quality Audit
+                    </Text>
+                  </View>
+
+                  <View
+                    style={
+                      styles.gridRow
+                    }
+                  >
+                    <Input
+                      label="Fat"
+                      value={fat}
+                      setValue={
+                        setFat
+                      }
+                      colors={
+                        colors
+                      }
+                    />
+
+                    <Input
+                      label="SNF"
+                      value={snf}
+                      setValue={
+                        setSnf
+                      }
+                      colors={
+                        colors
+                      }
+                    />
+                  </View>
+
+                  <View
+                    style={
+                      styles.gridRow
+                    }
+                  >
+                    <Input
+                      label="Lacto"
+                      value={lacto}
+                      setValue={
+                        setLacto
+                      }
+                      colors={
+                        colors
+                      }
+                    />
+
+                    <Input
+                      label="Temp"
+                      value={temp}
+                      setValue={
+                        setTemp
+                      }
+                      colors={
+                        colors
+                      }
+                    />
+                  </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.submitBtn,
+                      {
+                        backgroundColor:
+                          colors.primary,
+                      },
+                    ]}
+                    onPress={
+                      addQualityLog
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.submitText
+                      }
+                    >
+                      Save Audit
+                    </Text>
+                  </TouchableOpacity>
+                </GlassCard>
+
+                {qualityLogs.map(
+                  (
+                    log,
+                    index
+                  ) => (
+                    <GlassCard
+                      key={index}
+                      style={
+                        styles.logCard
+                      }
+                    >
+                      <View
+                        style={
+                          styles.logHeader
+                        }
+                      >
+                        <Text
+                          style={{
+                            color:
+                              colors.text,
+                            fontWeight:
+                              '900',
+                          }}
+                        >
+                          {
+                            log.date
+                          }
+                        </Text>
+
+                        <View
+                          style={[
+                            styles.approvedBadge,
+                            {
+                              backgroundColor:
+                                colors.success +
+                                '20',
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              color:
+                                colors.success,
+                              fontSize: 9,
+                              fontWeight:
+                                '900',
+                            }}
+                          >
+                            {
+                              log.status
+                            }
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View
+                        style={
+                          styles.metricsRow
+                        }
+                      >
+                        {[
+                          [
+                            'Fat',
+                            log.fat,
+                          ],
+                          [
+                            'SNF',
+                            log.snf,
+                          ],
+                          [
+                            'Lacto',
+                            log.lacto,
+                          ],
+                          [
+                            'Temp',
+                            log.temp,
+                          ],
+                        ].map(
+                          (
+                            item
+                          ) => (
+                            <View
+                              key={
+                                item[0]
+                              }
+                            >
+                              <Text
+                                style={
+                                  styles.metricLabel
+                                }
+                              >
+                                {
+                                  item[0]
+                                }
+                              </Text>
+
+                              <Text
+                                style={[
+                                  styles.metricValue,
+                                  {
+                                    color:
+                                      colors.text,
+                                  },
+                                ]}
+                              >
+                                {
+                                  item[1]
+                                }
+                              </Text>
+                            </View>
+                          )
+                        )}
+                      </View>
+                    </GlassCard>
+                  )
+                )}
+              </>
+            )}
+
+            {/* ROUTES */}
+            {activeTab ===
+              'routes' && (
+              <>
+                {dispatchRuns.map(
+                  (run) => {
+                    const progress =
+                      (run.completed /
+                        run.total) *
+                      100;
+
+                    return (
+                      <GlassCard
+                        key={run.id}
+                        style={
+                          styles.routeCard
+                        }
+                      >
+                        <View
+                          style={
+                            styles.routeHeader
+                          }
+                        >
+                          <View
+                            style={{
+                              flex: 1,
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.customerName,
+                                {
+                                  color:
+                                    colors.text,
+                                },
+                              ]}
+                            >
+                              {
+                                run.zone
+                              }
+                            </Text>
+
+                            <Text
+                              style={{
+                                color:
+                                  colors.textMuted,
+                                fontSize: 11,
+                              }}
+                            >
+                              Runner:{' '}
+                              {
+                                run.runner
+                              }
+                            </Text>
+                          </View>
+
+                          <View
+                            style={[
+                              styles.statusBadge,
+                              {
+                                backgroundColor:
+                                  run.status ===
+                                  'Delivered'
+                                    ? colors.success +
+                                      '20'
+                                    : colors.accent +
+                                      '20',
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={{
+                                color:
+                                  run.status ===
+                                  'Delivered'
+                                    ? colors.success
+                                    : colors.accent,
+                                fontSize: 9,
+                                fontWeight:
+                                  '900',
+                              }}
+                            >
+                              {
+                                run.status
+                              }
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View
+                          style={{
+                            marginTop: 12,
+                          }}
+                        >
+                          <Text
+                            style={
+                              styles.miniLabel
+                            }
+                          >
+                            DELIVERY
+                          </Text>
+
+                          <Text
+                            style={[
+                              styles.boldText,
+                              {
+                                color:
+                                  colors.text,
+                              },
+                            ]}
+                          >
+                            {
+                              run.completed
+                            }
+                            /
+                            {
+                              run.total
+                            }{' '}
+                            homes
+                          </Text>
+                        </View>
+
+                        <View
+                          style={[
+                            styles.progressBg,
+                            {
+                              backgroundColor:
+                                colors.border,
+                            },
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.progressFill,
+                              {
+                                width: `${progress}%`,
+                                backgroundColor:
+                                  colors.primary,
+                              },
+                            ]}
+                          />
+                        </View>
+
+                        <View
+                          style={
+                            styles.routeBtnRow
+                          }
+                        >
+                          <TouchableOpacity
+                            style={[
+                              styles.routeBtn,
+                              {
+                                backgroundColor:
+                                  colors.surface,
+                              },
+                            ]}
+                            onPress={() =>
+                              Alert.alert(
+                                'GPS',
+                                `${run.runner} is somewhere fighting traffic and human existence.`
+                              )
+                            }
+                          >
+                            <MapPin
+                              size={13}
+                              color={
+                                colors.text
+                              }
+                            />
+
+                            <Text
+                              style={[
+                                styles.actionText,
+                                {
+                                  color:
+                                    colors.text,
+                                },
+                              ]}
+                            >
+                              Trace
+                            </Text>
+                          </TouchableOpacity>
+
+                          {run.status !==
+                            'Delivered' && (
+                            <TouchableOpacity
+                              style={[
+                                styles.routeBtn,
+                                {
+                                  backgroundColor:
+                                    colors.primary,
+                                },
+                              ]}
+                              onPress={async () => {
+                                await supabase
+                                  .from(
+                                    'milk_dispatch_runs'
+                                  )
+                                  .update(
+                                    {
+                                      completed:
+                                        run.total,
+                                      status:
+                                        'Delivered',
+                                    }
+                                  )
+                                  .eq(
+                                    'id',
+                                    run.id
+                                  );
+
+                                fetchData();
+                              }}
+                            >
+                              <CheckCircle2
+                                size={
+                                  13
+                                }
+                                color="#FFF"
+                              />
+
+                              <Text
+                                style={[
+                                  styles.actionText,
+                                  {
+                                    color:
+                                      '#FFF',
+                                  },
+                                ]}
+                              >
+                                Delivered
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </GlassCard>
+                    );
+                  }
+                )}
+              </>
+            )}
+
+            <View
+              style={{
+                height: 120,
+              }}
+            />
+          </>
         )}
-        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Floating Bottom Navigation */}
-      <View style={[
-        styles.bottomTabBar, 
-        { 
-          backgroundColor: colors.surface + 'E8', 
-          borderColor: colors.border,
-          shadowColor: colors.primary,
-        }
-      ]}>
+      {/* BOTTOM NAV */}
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            backgroundColor:
+              colors.surface +
+              'E8',
+            borderColor:
+              colors.border,
+          },
+        ]}
+      >
         {[
-            { id: 'subs', label: 'Active Subs', icon: Users },
-            { id: 'bottles', label: 'Bottle Returns', icon: RefreshCw },
-            { id: 'quality', label: 'Fat & Fat Audit', icon: Flame },
-            { id: 'routes', label: 'Delivery Runs', icon: Truck },
-          ].map(tab => {
-          const isActive = activeTab === tab.id;
+          {
+            id: 'subs',
+            label: 'Subs',
+            icon: Users,
+          },
+          {
+            id: 'bottles',
+            label: 'Bottles',
+            icon: RefreshCw,
+          },
+          {
+            id: 'quality',
+            label: 'Quality',
+            icon: Flame,
+          },
+          {
+            id: 'routes',
+            label: 'Routes',
+            icon: Truck,
+          },
+        ].map((tab) => {
           const Icon = tab.icon;
+
+          const active =
+            activeTab === tab.id;
+
           return (
             <TouchableOpacity
               key={tab.id}
-              style={[styles.bottomTabBtn, isActive && { backgroundColor: colors.primary + '18' }]}
-              onPress={() => setActiveTab(tab.id as any)}
+              style={[
+                styles.bottomBtn,
+                active && {
+                  backgroundColor:
+                    colors.primary +
+                    '20',
+                },
+              ]}
+              onPress={() =>
+                setActiveTab(
+                  tab.id as TabType
+                )
+              }
             >
-              <View style={[styles.bottomTabIndicator, isActive && { backgroundColor: colors.primary }]} />
-              <Icon size={20} color={isActive ? colors.primary : colors.textMuted} />
-              <Text style={[styles.bottomTabLabel, { color: isActive ? colors.primary : colors.textMuted }]}>
-                {tab.label.trim()}
+              <Icon
+                size={20}
+                color={
+                  active
+                    ? colors.primary
+                    : colors.textMuted
+                }
+              />
+
+              <Text
+                style={{
+                  color: active
+                    ? colors.primary
+                    : colors.textMuted,
+                  fontSize: 10,
+                  fontWeight: '900',
+                }}
+              >
+                {tab.label}
               </Text>
             </TouchableOpacity>
           );
@@ -674,348 +1664,379 @@ function MilkManagerScreenMerchant() {
       </View>
     </View>
   );
-
 }
 
+function Input({
+  label,
+  value,
+  setValue,
+  colors,
+}: any) {
+  return (
+    <View style={{ flex: 1 }}>
+      <Text
+        style={{
+          fontSize: 10,
+          color: colors.textMuted,
+          marginBottom: 4,
+          fontWeight: '700',
+        }}
+      >
+        {label}
+      </Text>
 
-const styles: any = StyleSheet.create({
+      <TextInput
+        value={value}
+        onChangeText={setValue}
+        style={[
+          styles.input,
+          {
+            borderColor:
+              colors.border,
+            color: colors.text,
+            backgroundColor:
+              colors.surface,
+          },
+        ]}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 8,
   },
-  tabBarContainer: {
-    height: 48,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-  },
-  tabsScroll: {
-    paddingHorizontal: Spacing.md,
-    alignItems: 'center',
-    gap: 8,
-  },
-  tabBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  tabIcon: {
-    marginRight: 4,
-  },
-  tabLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
+
   scrollContent: {
     padding: Spacing.md,
   },
-  introHeader: {
+
+  analyticsCard: {
+    padding: 20,
+    borderRadius: 24,
+    marginBottom: 20,
+  },
+
+  analyticsTop: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+    alignItems: 'center',
+  },
+
+  analyticsMini: {
+    color:
+      'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+
+  analyticsValue: {
+    color: '#FFF',
+    fontSize: 30,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+
+  analyticsDivider: {
+    height: 1,
+    backgroundColor:
+      'rgba(255,255,255,0.15)',
+    marginVertical: 16,
+  },
+
+  analyticsStats: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+  },
+
+  analyticsStatValue: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+
+  analyticsStatLabel: {
+    color:
+      'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    marginTop: 2,
+  },
+
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '900',
     marginBottom: 16,
   },
-  introTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  introSub: {
-    fontSize: 12,
-    marginTop: 4,
-    lineHeight: 16,
-  },
-  searchRow: {
-    flexDirection: 'row',
+
+  searchBar: {
+    height: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
     marginBottom: 12,
   },
-  searchBar: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 13,
-  },
+
   filterRow: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 8,
     marginBottom: 16,
   },
+
   filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 14,
     borderWidth: 1,
   },
-  filterChipTxt: {
-    fontSize: 11,
-  },
+
   subCard: {
-    padding: 14,
+    padding: 16,
+    borderRadius: 20,
     marginBottom: 12,
-    borderRadius: 16,
   },
-  subCardHeader: {
+
+  subHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
   },
+
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#0F172A',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
-  studentName: {
+
+  customerName: {
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '900',
   },
-  hostelText: {
-    fontSize: 11,
-    marginTop: 1,
-  },
+
   statusBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingVertical: 4,
+    borderRadius: 10,
   },
-  statusText: {
+
+  subBody: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+  },
+
+  miniLabel: {
     fontSize: 9,
-    fontWeight: '900',
-  },
-  detailPanel: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 4,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  boldLabel: {
-    fontSize: 13,
+    color: '#94A3B8',
     fontWeight: '800',
-    marginTop: 2,
   },
-  quantityControlRow: {
+
+  boldText: {
+    fontSize: 13,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+
+  qtyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 2,
+    gap: 10,
+    marginTop: 4,
   },
-  qtyDisplayTxt: {
-    fontSize: 14,
+
+  qtyText: {
+    fontSize: 15,
     fontWeight: '900',
   },
-  actionsRow: {
+
+  actionRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 10,
-    gap: 8,
   },
+
   actionBtn: {
     flex: 1,
+    height: 36,
+    borderRadius: 12,
     flexDirection: 'row',
-    height: 32,
-    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 5,
   },
-  flexRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+
+  actionText: {
+    fontSize: 11,
+    fontWeight: '800',
   },
+
   bottleCard: {
-    padding: 14,
+    padding: 16,
+    borderRadius: 20,
     marginBottom: 12,
-    borderRadius: 16,
   },
-  bottleStatsBlock: {
-    alignItems: 'flex-end',
+
+  bottleBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
   },
-  pendingBottleVal: {
-    fontSize: 13,
-    fontWeight: '900',
-    marginTop: 2,
-  },
-  bottleLoggerArea: {
-    borderTopWidth: 1,
-    paddingTop: 12,
-    marginTop: 10,
-    gap: 8,
-  },
-  returnLogBtn: {
+
+  bottleBtn: {
     flex: 1,
-    height: 32,
+    height: 38,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   qualityForm: {
     padding: 16,
-    borderRadius: 16,
-    marginBottom: 20,
+    borderRadius: 20,
+    marginBottom: 16,
   },
-  formHeaderRow: {
+
+  formTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginBottom: 14,
   },
+
   formTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  formInputsGrid: {
-    flexDirection: 'row',
-    marginBottom: 10,
-  },
-  inputLabel: {
-    fontSize: 10,
-    marginBottom: 2,
-    fontWeight: '700',
-  },
-  qualityField: {
-    height: 38,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    fontSize: 12,
-    backgroundColor: 'rgba(255,255,255,0.01)',
-  },
-  submitQualityBtn: {
-    height: 38,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  sectionHeading: {
-    fontSize: 14,
-    fontWeight: '800',
-    marginBottom: 10,
-    marginTop: 10,
-  },
-  qualityLogCard: {
-    padding: 12,
-    marginBottom: 10,
-    borderRadius: 14,
-  },
-  logHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  logDate: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  approvedBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  logMetricsGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  logMetricColumn: {
-    gap: 2,
-  },
-  logMetricValue: {
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: '900',
   },
-  routeCard: {
-    padding: 14,
-    marginBottom: 12,
-    borderRadius: 16,
-  },
-  dispatchHeaderRow: {
+
+  gridRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  zoneName: {
-    fontSize: 14,
-    fontWeight: '800',
-    marginBottom: 2,
-  },
-  routeVolumePanel: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  progressBarArea: {
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginTop: 12,
+    gap: 10,
     marginBottom: 12,
   },
-  progressBarInner: {
-    height: '100%',
-    borderRadius: 3,
+
+  input: {
+    height: 42,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
   },
-  runnerActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  routeDetailsBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    height: 32,
-    borderRadius: 8,
+
+  submitBtn: {
+    height: 44,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  bottomTabBar: {
+
+  submitText: {
+    color: '#FFF',
+    fontWeight: '900',
+  },
+
+  logCard: {
+    padding: 16,
+    borderRadius: 18,
+    marginBottom: 10,
+  },
+
+  logHeader: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+
+  approvedBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+
+  metricsRow: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+  },
+
+  metricLabel: {
+    fontSize: 9,
+    color: '#94A3B8',
+    fontWeight: '800',
+  },
+
+  metricValue: {
+    fontSize: 13,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+
+  routeCard: {
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 12,
+  },
+
+  routeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  progressBg: {
+    height: 8,
+    borderRadius: 999,
+    overflow: 'hidden',
+    marginTop: 14,
+  },
+
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+
+  routeBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+
+  routeBtn: {
+    flex: 1,
+    height: 38,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 5,
+  },
+
+  bottomBar: {
     position: 'absolute',
-    bottom: 20,
     left: 16,
     right: 16,
-    height: 72,
-    borderRadius: 22,
+    bottom: 20,
+    height: 74,
+    borderRadius: 24,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 6,
-    elevation: 12,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
+    paddingHorizontal: 8,
   },
-  bottomTabBtn: {
+
+  bottomBtn: {
     flex: 1,
-    height: 56,
-    borderRadius: 16,
+    height: 58,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 3,
-  },
-  bottomTabIndicator: {
-    width: 16,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: 'transparent',
-    marginBottom: 2,
-  },
-  bottomTabLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: 0.2,
+    gap: 4,
   },
 });

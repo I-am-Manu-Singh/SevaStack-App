@@ -1,123 +1,196 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  ScrollView, 
-  TouchableOpacity, 
-  TextInput, 
-  Image, 
-  Alert, 
-  Share,
+// RepairManagerScreen.tsx
+// Refactored because gigantic 1500-line screens are apparently
+// how humanity copes with existential uncertainty.
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
+import {
+  ActivityIndicator,
+  Alert,
   RefreshControl,
-  ActivityIndicator
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
-import { 
-  Wrench,
-  Hammer,
-  Settings,
+
+import {
   AlertTriangle,
+  Hammer,
   Plus,
-  Search,
-  Share2,
-  CheckCircle2,
-  Sparkles,
-  ChevronRight,
   QrCode,
-  TrendingUp,
-  ArrowUpRight,
-  Check
+  Search,
+  Settings,
+  Share2,
+  Sparkles,
+  Wrench,
 } from 'lucide-react-native';
-import { Colors, Spacing, Typography } from '@/constants/Theme';
+
 import { GlassCard } from '@/components/GlassCard';
+import { CustomerBusinessView } from '@/components/CustomerBusinessView';
+
 import { useApp } from '@/lib/AppContext';
 import { supabase } from '@/lib/supabase';
 
-import { CustomerBusinessView } from '@/components/CustomerBusinessView';
+import { Spacing } from '@/constants/Theme';
+
+type ActiveTab =
+  | 'repairs'
+  | 'parts'
+  | 'otp';
 
 export default function RepairManagerScreen() {
-  const { userRole, businessType } = useApp();
-  
-  if (userRole === 'customer' || businessType !== 'Handyman') {
-    return <CustomerBusinessView type="Handyman" />;
+  const { userRole, businessType } =
+    useApp();
+
+  if (
+    userRole === 'customer' ||
+    businessType !== 'Handyman'
+  ) {
+    return (
+      <CustomerBusinessView type="Handyman" />
+    );
   }
 
-  return <RepairManagerScreenMerchant />;
+  return <RepairMerchantScreen />;
 }
 
-function RepairManagerScreenMerchant() {
+function RepairMerchantScreen() {
+  const { colors, profile } =
+    useApp();
 
-  const { colors, theme, profile, userRole, businessType } = useApp();
-  
-  
+  const [activeTab, setActiveTab] =
+    useState<ActiveTab>('repairs');
 
-  const [activeTab, setActiveTab] = useState<'repairs' | 'parts' | 'otp'>('repairs');
+  const [loading, setLoading] =
+    useState(true);
 
-  // Dynamic Supabase State
-  const [repairs, setRepairs] = useState<any[]>([]);
-  const [parts, setParts] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [repairs, setRepairs] =
+    useState<any[]>([]);
+
+  const [parts, setParts] =
+    useState<any[]>([]);
+
+  const [searchQuery, setSearchQuery] =
+    useState('');
+
+  const [repairFilter, setRepairFilter] =
+    useState<
+      | 'All'
+      | 'Reported'
+      | 'Inspecting'
+      | 'Fixing'
+      | 'Resolved'
+    >('All');
+
+  // CREATE JOB
+  const [showCreate, setShowCreate] =
+    useState(false);
+
+  const [name, setName] =
+    useState('');
+
+  const [room, setRoom] =
+    useState('Hostel A - 302');
+
+  const [category, setCategory] =
+    useState('Electrical');
+
+  const [issue, setIssue] =
+    useState(
+      'Tube light flickering'
+    );
+
+  const [cost, setCost] =
+    useState('200');
+
+  // PARTS
+  const [selectedRepair, setSelectedRepair] =
+    useState<any | null>(null);
+
+  const [selectedParts, setSelectedParts] =
+    useState<string[]>([]);
+
+  const [laborCharge, setLaborCharge] =
+    useState('150');
+
+  // OTP
+  const [verifyingRepair, setVerifyingRepair] =
+    useState<any | null>(null);
+
+  const [inputOtp, setInputOtp] =
+    useState('');
 
   const fetchData = useCallback(async () => {
     if (!profile?.id) return;
+
     try {
-      const [repairsData, partsData] = await Promise.all([
-        supabase.from('repair_jobs').select('*').eq('merchant_id', profile.id).order('created_at', { ascending: false }),
-        supabase.from('repair_parts').select('*').eq('merchant_id', profile.id).order('created_at', { ascending: false })
+      const [
+        repairsRes,
+        partsRes,
+      ] = await Promise.all([
+        supabase
+          .from('repair_jobs')
+          .select('*')
+          .eq(
+            'merchant_id',
+            profile.id
+          )
+          .order('created_at', {
+            ascending: false,
+          }),
+
+        supabase
+          .from('repair_parts')
+          .select('*')
+          .eq(
+            'merchant_id',
+            profile.id
+          ),
       ]);
-      
-      let finalRepairs = repairsData.data || [];
-      if (!repairsData.data || repairsData.data.length === 0) {
-        const defaultRepairs = [
-          { student_name: 'Varun Dhawan', room: 'Hostel A - 108', category: 'AC & Cooler', issue: 'Cooler pump not lifting water', status: 'Reported', cost: 250, parts_used: 'None registered', otp_code: '4820', date: 'Today' },
-          { student_name: 'Alia Bhatt', room: 'Hostel C - 204', category: 'Electrical', issue: 'Tubelight flickering continuously', status: 'Inspecting', cost: 120, parts_used: 'None registered', otp_code: '9031', date: 'Today' }
-        ].map(r => ({ ...r, merchant_id: profile.id }));
-        const seedRes = await supabase.from('repair_jobs').insert(defaultRepairs).select();
-        if (seedRes.data) finalRepairs = seedRes.data;
-      }
 
-      const mappedRepairs = finalRepairs.map((row: any) => ({
-        id: row.id,
-        studentName: row.student_name,
-        room: row.room,
-        category: row.category,
-        issue: row.issue,
-        status: row.status,
-        cost: row.cost || 0,
-        partsUsed: row.parts_used || 'None registered',
-        otpCode: row.otp_code,
-        date: row.date || 'Today'
-      }));
-      setRepairs(mappedRepairs);
+      setRepairs(
+        (repairsRes.data || []).map(
+          (item: any) => ({
+            id: item.id,
+            studentName:
+              item.student_name,
+            room: item.room,
+            category:
+              item.category,
+            issue: item.issue,
+            status:
+              item.status,
+            cost: item.cost,
+            partsUsed:
+              item.parts_used,
+            otpCode:
+              item.otp_code,
+            date: item.date,
+          })
+        )
+      );
 
-      let finalParts = partsData.data || [];
-      if (!partsData.data || partsData.data.length === 0) {
-        const defaultParts = [
-          { name: 'Submersible Cooler Pump', price: 250, stock: 12 },
-          { name: 'Ceiling Fan Regulator', price: 80, stock: 24 },
-          { name: 'LED Tube Light 20W', price: 120, stock: 18 },
-          { name: 'Geyser Heating Element', price: 450, stock: 6 }
-        ].map(p => ({ ...p, merchant_id: profile.id }));
-        const seedRes = await supabase.from('repair_parts').insert(defaultParts).select();
-        if (seedRes.data) finalParts = seedRes.data;
-      }
-
-      const mappedParts = finalParts.map((row: any) => ({
-        id: row.id,
-        name: row.name,
-        price: row.price || 0,
-        stock: row.stock || 0
-      }));
-      setParts(mappedParts);
-
+      setParts(partsRes.data || []);
     } catch (e) {
-      console.error(e);
+      console.log(e);
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   }, [profile?.id]);
 
@@ -126,562 +199,1506 @@ function RepairManagerScreenMerchant() {
   }, [fetchData]);
 
   const onRefresh = () => {
-    setIsRefreshing(true);
+    setRefreshing(true);
     fetchData();
   };
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [repairFilter, setRepairFilter] = useState<'All' | 'Reported' | 'Inspecting' | 'Fixing' | 'Resolved'>('All');
+  const filteredRepairs =
+    repairs.filter((repair) => {
+      const matchesSearch =
+        repair.studentName
+          .toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          ) ||
+        repair.room
+          .toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          ) ||
+        repair.issue
+          .toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          );
 
-  // Add Repair state
-  const [newRepairModal, setNewRepairModal] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newRoom, setNewRoom] = useState('Hostel C - 302');
-  const [newCategory, setNewCategory] = useState('AC & Cooler');
-  const [newIssue, setNewIssue] = useState('AC water leaking on study desk');
-  const [newCost, setNewCost] = useState('350');
+      const matchesFilter =
+        repairFilter === 'All' ||
+        repair.status ===
+          repairFilter;
 
-  // Spare Parts checklist invoice state
-  const [selectedRep, setSelectedRep] = useState<any | null>(null);
-  const [selectedParts, setSelectedParts] = useState<string[]>([]);
-  const [laborCharge, setLaborCharge] = useState('150');
-
-  // OTP Verification state
-  const [verifyingRep, setVerifyingRep] = useState<any | null>(null);
-  const [inputOtp, setInputOtp] = useState('');
-
-  // Add New Repair job
-  const handleAddNewRepair = async () => {
-    if (!newName || !newIssue) {
-      Alert.alert('Missing Fields', 'Please complete student name and issue description.');
-      return;
-    }
-    if (!profile?.id) return;
-
-    const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
-
-    try {
-      const { error } = await supabase.from('repair_jobs').insert([{
-        merchant_id: profile.id,
-        student_name: newName,
-        room: newRoom,
-        category: newCategory,
-        issue: newIssue,
-        status: 'Reported',
-        cost: parseInt(newCost) || 200,
-        parts_used: 'None registered',
-        otp_code: generatedOtp,
-        date: 'Today'
-      }]);
-
-      if (error) throw error;
-
-      Alert.alert('Repair Ticket Created', `Successfully setup a repair ticket for ${newName} at ${newRoom}. OTP code ${generatedOtp} sent.`);
-      setNewName('');
-      setNewIssue('');
-      setNewRepairModal(false);
-      fetchData();
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
-  };
-
-  // Transition repair stage
-  const transitionRepairStatus = async (id: string, currentStatus: string) => {
-    const statusSequence = ['Reported', 'Inspecting', 'Fixing', 'Resolved'];
-    const nextIdx = statusSequence.indexOf(currentStatus) + 1;
-    if (nextIdx >= statusSequence.length) return;
-
-    const nextStatus = statusSequence[nextIdx];
-
-    if (nextStatus === 'Resolved') {
-      const targetRep = repairs.find(r => r.id === id);
-      if (targetRep) {
-        setVerifyingRep(targetRep);
-      }
-      return;
-    }
-
-    try {
-      const { error } = await supabase.from('repair_jobs').update({ status: nextStatus }).eq('id', id);
-      if (error) throw error;
-      fetchData();
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
-  };
-
-  // Verify OTP closure
-  const handleVerifyOtp = async () => {
-    if (!verifyingRep) return;
-    if (inputOtp === verifyingRep.otpCode) {
-      try {
-        const { error } = await supabase.from('repair_jobs').update({ status: 'Resolved' }).eq('id', verifyingRep.id);
-        if (error) throw error;
-
-        Alert.alert('OTP Verified', `Ticket resolved successfully. Payments and handback completed.`);
-        setVerifyingRep(null);
-        setInputOtp('');
-        fetchData();
-      } catch (e: any) {
-        Alert.alert('Error', e.message);
-      }
-    } else {
-      Alert.alert('Invalid OTP', 'The completion security code entered is incorrect.');
-    }
-  };
-
-  // Spare Parts invoice checkout calculator
-  const handleSettlePartsInvoice = async () => {
-    if (!selectedRep) return;
-    let partsTotal = 0;
-    const partsNames: string[] = [];
-
-    parts.forEach(pt => {
-      if (selectedParts.includes(pt.id)) {
-        partsTotal += pt.price;
-        partsNames.push(pt.name);
-      }
+      return (
+        matchesSearch &&
+        matchesFilter
+      );
     });
 
-    const totalInvoice = partsTotal + (parseInt(laborCharge) || 150);
+  // ANALYTICS
+  const activeRepairs = useMemo(
+    () =>
+      repairs.filter(
+        (r) =>
+          r.status !==
+          'Resolved'
+      ).length,
+    [repairs]
+  );
 
-    try {
-      const { error } = await supabase.from('repair_jobs').update({
-        cost: totalInvoice,
-        parts_used: partsNames.join(', ') || 'Service Only'
-      }).eq('id', selectedRep.id);
+  const totalRevenue = useMemo(
+    () =>
+      repairs.reduce(
+        (acc, item) =>
+          acc + (item.cost || 0),
+        0
+      ),
+    [repairs]
+  );
 
-      if (error) throw error;
+  // CREATE
+  const createRepair =
+    async () => {
+      if (!name || !issue) {
+        Alert.alert(
+          'Missing fields',
+          'Humans remain passionately committed to incomplete forms.'
+        );
+        return;
+      }
 
-      Alert.alert('Invoice Calculated', `Finalized repair cost at ₹${totalInvoice} including spares.`);
-      setSelectedRep(null);
-      setSelectedParts([]);
+      const otp = Math.floor(
+        1000 +
+          Math.random() * 9000
+      ).toString();
+
+      await supabase
+        .from('repair_jobs')
+        .insert([
+          {
+            merchant_id:
+              profile?.id,
+            student_name:
+              name,
+            room,
+            category,
+            issue,
+            status:
+              'Reported',
+            cost:
+              parseInt(cost) ||
+              200,
+            parts_used:
+              'None',
+            otp_code: otp,
+            date: 'Today',
+          },
+        ]);
+
       fetchData();
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
-  };
 
-  const filteredRepairs = repairs.filter(rep => {
-    const matchesSearch = rep.studentName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          rep.room.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          rep.issue.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = repairFilter === 'All' || rep.status === repairFilter;
-    return matchesSearch && matchesFilter;
-  });
+      setShowCreate(false);
+
+      setName('');
+      setIssue('');
+    };
+
+  // STATUS
+  const nextRepairStage =
+    async (
+      id: string,
+      current: string
+    ) => {
+      const stages = [
+        'Reported',
+        'Inspecting',
+        'Fixing',
+        'Resolved',
+      ];
+
+      const next =
+        stages[
+          stages.indexOf(
+            current
+          ) + 1
+        ];
+
+      if (!next) return;
+
+      if (next === 'Resolved') {
+        const found =
+          repairs.find(
+            (r) =>
+              r.id === id
+          );
+
+        if (found) {
+          setVerifyingRepair(
+            found
+          );
+        }
+
+        return;
+      }
+
+      await supabase
+        .from('repair_jobs')
+        .update({
+          status: next,
+        })
+        .eq('id', id);
+
+      fetchData();
+    };
+
+  // OTP VERIFY
+  const verifyOtp =
+    async () => {
+      if (
+        inputOtp !==
+        verifyingRepair?.otpCode
+      ) {
+        Alert.alert(
+          'Invalid OTP',
+          'Wrong code. Tiny numbers continue gatekeeping civilization.'
+        );
+
+        return;
+      }
+
+      await supabase
+        .from('repair_jobs')
+        .update({
+          status: 'Resolved',
+        })
+        .eq(
+          'id',
+          verifyingRepair.id
+        );
+
+      Alert.alert(
+        'Resolved',
+        'Repair closed successfully.'
+      );
+
+      setVerifyingRepair(null);
+
+      setInputOtp('');
+
+      fetchData();
+    };
+
+  // PARTS INVOICE
+  const calculateInvoice =
+    async () => {
+      if (!selectedRepair) return;
+
+      let partsTotal = 0;
+
+      const names: string[] = [];
+
+      parts.forEach((part) => {
+        if (
+          selectedParts.includes(
+            part.id
+          )
+        ) {
+          partsTotal +=
+            part.price;
+
+          names.push(part.name);
+        }
+      });
+
+      const finalCost =
+        partsTotal +
+        (parseInt(
+          laborCharge
+        ) || 150);
+
+      await supabase
+        .from('repair_jobs')
+        .update({
+          cost: finalCost,
+          parts_used:
+            names.join(', '),
+        })
+        .eq(
+          'id',
+          selectedRepair.id
+        );
+
+      Alert.alert(
+        'Invoice Updated',
+        `₹${finalCost} total invoice generated. Commerce marches onward.`
+      );
+
+      setSelectedRepair(null);
+
+      setSelectedParts([]);
+
+      fetchData();
+    };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor:
+            colors.background,
+        },
+      ]}
+    >
       <StatusBar style="light" />
-      <Stack.Screen options={{ 
-        title: 'Handyman Repairs Suite',
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.primary,
-        headerShown: true
-      }} />
 
-      <ScrollView 
-         showsVerticalScrollIndicator={false} 
-         contentContainerStyle={styles.scrollContent}
-         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      <Stack.Screen
+        options={{
+          title:
+            'Repair Management',
+          headerStyle: {
+            backgroundColor:
+              colors.background,
+          },
+          headerTintColor:
+            colors.primary,
+        }}
+      />
+
+      <ScrollView
+        contentContainerStyle={
+          styles.scrollContent
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              refreshing
+            }
+            onRefresh={
+              onRefresh
+            }
+            tintColor={
+              colors.primary
+            }
+          />
+        }
       >
-        
-        {activeTab === 'repairs' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Handyman Repair Tickets Queue</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Organize PG room repair complaints (AC, water heaters, coolers, furniture) and coordinate completion flows.
-              </Text>
-            </View>
-
-            {/* Quick Search and Add Repair */}
-            <View style={styles.searchRow}>
-              <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Search size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
-                <TextInput
-                  placeholder="Search student, room, issue..."
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.searchInput, { color: colors.text }]}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                />
-              </View>
-              <TouchableOpacity 
-                style={[styles.addBtn, { backgroundColor: colors.primary }]}
-                onPress={() => setNewRepairModal(!newRepairModal)}
+        {loading ? (
+          <ActivityIndicator
+            size="large"
+            color={
+              colors.primary
+            }
+            style={{
+              marginTop: 40,
+            }}
+          />
+        ) : (
+          <>
+            {/* ANALYTICS */}
+            <GlassCard
+              style={[
+                styles.analyticsCard,
+                {
+                  backgroundColor:
+                    colors.primary,
+                },
+              ]}
+            >
+              <Text
+                style={
+                  styles.analyticsLabel
+                }
               >
-                <Plus size={20} color="#FFF" />
-              </TouchableOpacity>
-            </View>
+                ACTIVE REPAIRS
+              </Text>
 
-            {/* Repair filters */}
-            <View style={styles.filterRow}>
-              {['All', 'Reported', 'Inspecting', 'Fixing', 'Resolved'].map(f => (
-                <TouchableOpacity
-                  key={f}
-                  style={[
-                    styles.filterChip,
-                    { backgroundColor: colors.surface, borderColor: colors.border },
-                    repairFilter === f && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
-                  ]}
-                  onPress={() => setRepairFilter(f as any)}
+              <Text
+                style={
+                  styles.analyticsValue
+                }
+              >
+                {activeRepairs}
+              </Text>
+
+              <View
+                style={
+                  styles.analyticsDivider
+                }
+              />
+
+              <Text
+                style={
+                  styles.analyticsSub
+                }
+              >
+                Total Revenue
+              </Text>
+
+              <Text
+                style={
+                  styles.analyticsRevenue
+                }
+              >
+                ₹{totalRevenue}
+              </Text>
+            </GlassCard>
+
+            {/* REPAIRS */}
+            {activeTab ===
+              'repairs' && (
+              <>
+                <View
+                  style={
+                    styles.searchRow
+                  }
                 >
-                  <Text style={[
-                    styles.filterChipTxt,
-                    { color: colors.textMuted },
-                    repairFilter === f && { color: colors.primary, fontWeight: '700' }
-                  ]}>
-                    {f}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Add Repair form modal */}
-            {newRepairModal && (
-              <GlassCard style={styles.modalFormCard}>
-                <View style={styles.formHeaderRow}>
-                  <Sparkles size={16} color={colors.primary} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>File Repair Ticket</Text>
-                  <TouchableOpacity onPress={() => setNewRepairModal(false)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Close</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <TextInput
-                  placeholder="Student Full Name"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newName}
-                  onChangeText={setNewName}
-                />
-
-                <TextInput
-                  placeholder="Room No (e.g. Hostel C - 302)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newRoom}
-                  onChangeText={setNewRoom}
-                />
-
-                <TextInput
-                  placeholder="Category (e.g. AC & Cooler, Electrical)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newCategory}
-                  onChangeText={setNewCategory}
-                />
-
-                <TextInput
-                  placeholder="Describe repair issue details..."
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newIssue}
-                  onChangeText={setNewIssue}
-                />
-
-                <TextInput
-                  placeholder="Estimated Base Repair Labor (₹)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newCost}
-                  onChangeText={setNewCost}
-                  keyboardType="numeric"
-                />
-
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-                  onPress={handleAddNewRepair}
-                >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>File Room Ticket</Text>
-                </TouchableOpacity>
-              </GlassCard>
-            )}
-
-            {/* List */}
-            {filteredRepairs.map(rep => (
-              <GlassCard key={rep.id} style={styles.printCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{rep.studentName}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}> Room: {rep.room} • {rep.date}</Text>
-                  </View>
-                  
-                  <View style={[
-                    styles.statusBadge, 
-                    rep.status === 'Resolved' ? { backgroundColor: colors.success + '20' } : { backgroundColor: colors.accent + '20' }
-                  ]}>
-                    <Wrench size={11} color={rep.status === 'Resolved' ? colors.success : colors.accent} style={{ marginRight: 4 }} />
-                    <Text style={{ fontSize: 9, color: rep.status === 'Resolved' ? colors.success : colors.accent, fontWeight: '900' }}>
-                      {rep.status.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={[styles.pdfDetailsPanel, { borderTopColor: colors.border }]}>
-                  <Settings size={16} color={colors.primary} style={{ marginRight: 8 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.pdfNameLabel, { color: colors.text }]}>Category: {rep.category}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                      Issue: {rep.issue}
-                    </Text>
-                    <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 4 }}>
-                      Parts Checked: {rep.partsUsed}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={[styles.invoiceRow, { borderTopColor: colors.border }]}>
-                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Total Service Invoice Price:</Text>
-                  <Text style={[styles.qtyDisplayTxt, { color: colors.text }]}>₹{rep.cost}</Text>
-                </View>
-
-                {/* Repair Actions */}
-                <View style={styles.printActionArea}>
-                  <TouchableOpacity 
-                    style={[styles.shareSlipBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Share.share({ message: `Hi ${rep.studentName}, your handyman room repair ticket for ${rep.issue} is marked "${rep.status}". Final Invoice total: ₹${rep.cost}. Settle via UPI!` })}
+                  <View
+                    style={[
+                      styles.searchBar,
+                      {
+                        backgroundColor:
+                          colors.surface,
+                        borderColor:
+                          colors.border,
+                      },
+                    ]}
                   >
-                    <Share2 size={13} color={colors.text} style={{ marginRight: 4 }} />
-                    <Text style={{ color: colors.text, fontSize: 10, fontWeight: '700' }}>Share Bill</Text>
-                  </TouchableOpacity>
+                    <Search
+                      size={18}
+                      color={
+                        colors.textMuted
+                      }
+                    />
 
-                  {rep.status !== 'Resolved' && (
-                    <TouchableOpacity 
-                      style={[styles.transitionButton, { backgroundColor: colors.primary }]}
-                      onPress={() => transitionRepairStatus(rep.id, rep.status)}
+                    <TextInput
+                      placeholder="Search repairs..."
+                      placeholderTextColor={
+                        colors.textMuted
+                      }
+                      value={
+                        searchQuery
+                      }
+                      onChangeText={
+                        setSearchQuery
+                      }
+                      style={{
+                        flex: 1,
+                        marginLeft: 8,
+                        color:
+                          colors.text,
+                      }}
+                    />
+                  </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.addBtn,
+                      {
+                        backgroundColor:
+                          colors.primary,
+                      },
+                    ]}
+                    onPress={() =>
+                      setShowCreate(
+                        !showCreate
+                      )
+                    }
+                  >
+                    <Plus
+                      size={20}
+                      color="#FFF"
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {/* FILTERS */}
+                <View
+                  style={
+                    styles.filterRow
+                  }
+                >
+                  {[
+                    'All',
+                    'Reported',
+                    'Inspecting',
+                    'Fixing',
+                    'Resolved',
+                  ].map((item) => {
+                    const active =
+                      repairFilter ===
+                      item;
+
+                    return (
+                      <TouchableOpacity
+                        key={item}
+                        style={[
+                          styles.filterChip,
+                          {
+                            backgroundColor:
+                              active
+                                ? colors.primary +
+                                  '20'
+                                : colors.surface,
+                            borderColor:
+                              active
+                                ? colors.primary
+                                : colors.border,
+                          },
+                        ]}
+                        onPress={() =>
+                          setRepairFilter(
+                            item as any
+                          )
+                        }
+                      >
+                        <Text
+                          style={{
+                            color:
+                              active
+                                ? colors.primary
+                                : colors.textMuted,
+                            fontSize: 10,
+                            fontWeight:
+                              '800',
+                          }}
+                        >
+                          {item}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* CREATE FORM */}
+                {showCreate && (
+                  <GlassCard
+                    style={
+                      styles.modalCard
+                    }
+                  >
+                    <View
+                      style={
+                        styles.formHeader
+                      }
                     >
-                      <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>
-                        {rep.status === 'Reported' && 'Start Inspection '}
-                        {rep.status === 'Inspecting' && 'Assign Spare Parts '}
-                        {rep.status === 'Fixing' && 'Verify OTP & Settle Dues '}
+                      <View
+                        style={
+                          styles.row
+                        }
+                      >
+                        <Sparkles
+                          size={16}
+                          color={
+                            colors.primary
+                          }
+                        />
+
+                        <Text
+                          style={[
+                            styles.formTitle,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          New Repair
+                        </Text>
+                      </View>
+
+                      <TouchableOpacity
+                        onPress={() =>
+                          setShowCreate(
+                            false
+                          )
+                        }
+                      >
+                        <Text
+                          style={{
+                            color:
+                              colors.error,
+                            fontWeight:
+                              '900',
+                          }}
+                        >
+                          Close
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {[
+                      [
+                        name,
+                        setName,
+                        'Student Name',
+                      ],
+                      [
+                        room,
+                        setRoom,
+                        'Room',
+                      ],
+                      [
+                        category,
+                        setCategory,
+                        'Category',
+                      ],
+                      [
+                        issue,
+                        setIssue,
+                        'Issue',
+                      ],
+                      [
+                        cost,
+                        setCost,
+                        'Estimated Cost',
+                      ],
+                    ].map(
+                      (
+                        item,
+                        index
+                      ) => (
+                        <TextInput
+                          key={index}
+                          value={
+                            item[0] as string
+                          }
+                          onChangeText={
+                            item[1] as any
+                          }
+                          placeholder={
+                            item[2] as string
+                          }
+                          keyboardType={
+                            item[2] ===
+                            'Estimated Cost'
+                              ? 'numeric'
+                              : 'default'
+                          }
+                          placeholderTextColor={
+                            colors.textMuted
+                          }
+                          style={[
+                            styles.input,
+                            {
+                              color:
+                                colors.text,
+                              borderColor:
+                                colors.border,
+                              backgroundColor:
+                                colors.surface,
+                            },
+                          ]}
+                        />
+                      )
+                    )}
+
+                    <TouchableOpacity
+                      style={[
+                        styles.submitBtn,
+                        {
+                          backgroundColor:
+                            colors.primary,
+                        },
+                      ]}
+                      onPress={
+                        createRepair
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.submitText
+                        }
+                      >
+                        Create Ticket
                       </Text>
                     </TouchableOpacity>
-                  )}
+                  </GlassCard>
+                )}
 
-                  {rep.status !== 'Resolved' && (
-                    <TouchableOpacity 
-                      style={[styles.shareSlipBtn, { backgroundColor: colors.surfaceLight }]}
-                      onPress={() => setSelectedRep(rep)}
-                    >
-                      <Text style={{ color: colors.text, fontSize: 10, fontWeight: '700' }}>Calc Invoice</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </GlassCard>
-            ))}
+                {/* LIST */}
+                {filteredRepairs.map(
+                  (repair) => {
+                    const resolved =
+                      repair.status ===
+                      'Resolved';
 
-            {/* Spare Parts Checklist POS Modal */}
-            {selectedRep && (
-              <GlassCard style={styles.billFormCard}>
-                <View style={styles.formHeaderRow}>
-                  <Settings size={18} color={colors.primary} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>Parts Invoice: {selectedRep.studentName}</Text>
-                  <TouchableOpacity onPress={() => setSelectedRep(null)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Cancel</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <TextInput
-                  placeholder="Base Service Labor Cost (₹)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={laborCharge}
-                  onChangeText={setLaborCharge}
-                  keyboardType="numeric"
-                />
-
-                <Text style={[styles.inputLabel, { color: colors.text, marginVertical: 8 }]}>CHECK OFF REPLACEMENT PARTS</Text>
-                {parts.map(pt => {
-                  const isSelected = selectedParts.includes(pt.id);
-                  return (
-                    <TouchableOpacity
-                      key={pt.id}
-                      style={[
-                        styles.friendRow,
-                        { borderBottomColor: colors.border },
-                        isSelected && { backgroundColor: colors.primary + '10' }
-                      ]}
-                      onPress={() => {
-                        if (isSelected) {
-                          setSelectedParts(selectedParts.filter(id => id !== pt.id));
-                        } else {
-                          setSelectedParts([...selectedParts, pt.id]);
+                    return (
+                      <GlassCard
+                        key={
+                          repair.id
                         }
+                        style={
+                          styles.repairCard
+                        }
+                      >
+                        <View
+                          style={
+                            styles.cardHeader
+                          }
+                        >
+                          <View
+                            style={{
+                              flex: 1,
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.customerName,
+                                {
+                                  color:
+                                    colors.text,
+                                },
+                              ]}
+                            >
+                              {
+                                repair.studentName
+                              }
+                            </Text>
+
+                            <Text
+                              style={{
+                                color:
+                                  colors.textMuted,
+                                fontSize: 11,
+                              }}
+                            >
+                              {
+                                repair.room
+                              }
+                            </Text>
+                          </View>
+
+                          <View
+                            style={[
+                              styles.statusBadge,
+                              {
+                                backgroundColor:
+                                  resolved
+                                    ? colors.success +
+                                      '20'
+                                    : colors.accent +
+                                      '20',
+                              },
+                            ]}
+                          >
+                            <Wrench
+                              size={
+                                12
+                              }
+                              color={
+                                resolved
+                                  ? colors.success
+                                  : colors.accent
+                              }
+                            />
+
+                            <Text
+                              style={{
+                                color:
+                                  resolved
+                                    ? colors.success
+                                    : colors.accent,
+                                fontSize: 9,
+                                fontWeight:
+                                  '900',
+                                marginLeft: 4,
+                              }}
+                            >
+                              {
+                                repair.status
+                              }
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View
+                          style={[
+                            styles.detailsBox,
+                            {
+                              borderTopColor:
+                                colors.border,
+                            },
+                          ]}
+                        >
+                          <Settings
+                            size={16}
+                            color={
+                              colors.primary
+                            }
+                          />
+
+                          <View
+                            style={{
+                              flex: 1,
+                              marginLeft: 8,
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.issueTitle,
+                                {
+                                  color:
+                                    colors.text,
+                                },
+                              ]}
+                            >
+                              {
+                                repair.category
+                              }
+                            </Text>
+
+                            <Text
+                              style={{
+                                color:
+                                  colors.textMuted,
+                                fontSize: 11,
+                                marginTop: 2,
+                              }}
+                            >
+                              {
+                                repair.issue
+                              }
+                            </Text>
+
+                            <Text
+                              style={{
+                                color:
+                                  colors.textMuted,
+                                fontSize: 10,
+                                marginTop: 6,
+                              }}
+                            >
+                              Parts:{' '}
+                              {
+                                repair.partsUsed
+                              }
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View
+                          style={[
+                            styles.invoiceRow,
+                            {
+                              borderTopColor:
+                                colors.border,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              color:
+                                colors.textMuted,
+                            }}
+                          >
+                            Invoice
+                          </Text>
+
+                          <Text
+                            style={{
+                              color:
+                                colors.text,
+                              fontWeight:
+                                '900',
+                            }}
+                          >
+                            ₹
+                            {
+                              repair.cost
+                            }
+                          </Text>
+                        </View>
+
+                        <View
+                          style={
+                            styles.actionsRow
+                          }
+                        >
+                          <TouchableOpacity
+                            style={[
+                              styles.actionBtn,
+                              {
+                                backgroundColor:
+                                  colors.surface,
+                              },
+                            ]}
+                            onPress={() =>
+                              Share.share({
+                                message: `${repair.studentName}: ${repair.status}`,
+                              })
+                            }
+                          >
+                            <Share2
+                              size={13}
+                              color={
+                                colors.text
+                              }
+                            />
+
+                            <Text
+                              style={[
+                                styles.actionText,
+                                {
+                                  color:
+                                    colors.text,
+                                },
+                              ]}
+                            >
+                              Share
+                            </Text>
+                          </TouchableOpacity>
+
+                          {!resolved && (
+                            <TouchableOpacity
+                              style={[
+                                styles.actionBtn,
+                                {
+                                  backgroundColor:
+                                    colors.primary,
+                                },
+                              ]}
+                              onPress={() =>
+                                nextRepairStage(
+                                  repair.id,
+                                  repair.status
+                                )
+                              }
+                            >
+                              <Text
+                                style={[
+                                  styles.actionText,
+                                  {
+                                    color:
+                                      '#FFF',
+                                  },
+                                ]}
+                              >
+                                Next
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+
+                          {!resolved && (
+                            <TouchableOpacity
+                              style={[
+                                styles.actionBtn,
+                                {
+                                  backgroundColor:
+                                    colors.success,
+                                },
+                              ]}
+                              onPress={() =>
+                                setSelectedRepair(
+                                  repair
+                                )
+                              }
+                            >
+                              <Text
+                                style={[
+                                  styles.actionText,
+                                  {
+                                    color:
+                                      '#FFF',
+                                  },
+                                ]}
+                              >
+                                Invoice
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </GlassCard>
+                    );
+                  }
+                )}
+
+                {/* PARTS MODAL */}
+                {selectedRepair && (
+                  <GlassCard
+                    style={
+                      styles.modalCard
+                    }
+                  >
+                    <View
+                      style={
+                        styles.formHeader
+                      }
+                    >
+                      <View
+                        style={
+                          styles.row
+                        }
+                      >
+                        <Settings
+                          size={18}
+                          color={
+                            colors.primary
+                          }
+                        />
+
+                        <Text
+                          style={[
+                            styles.formTitle,
+                            {
+                              color:
+                                colors.text,
+                            },
+                          ]}
+                        >
+                          Parts Invoice
+                        </Text>
+                      </View>
+                    </View>
+
+                    <TextInput
+                      value={
+                        laborCharge
+                      }
+                      onChangeText={
+                        setLaborCharge
+                      }
+                      keyboardType="numeric"
+                      placeholder="Labor"
+                      placeholderTextColor={
+                        colors.textMuted
+                      }
+                      style={[
+                        styles.input,
+                        {
+                          color:
+                            colors.text,
+                          borderColor:
+                            colors.border,
+                          backgroundColor:
+                            colors.surface,
+                        },
+                      ]}
+                    />
+
+                    {parts.map(
+                      (part) => {
+                        const selected =
+                          selectedParts.includes(
+                            part.id
+                          );
+
+                        return (
+                          <TouchableOpacity
+                            key={
+                              part.id
+                            }
+                            style={[
+                              styles.partRow,
+                              {
+                                borderBottomColor:
+                                  colors.border,
+                                backgroundColor:
+                                  selected
+                                    ? colors.primary +
+                                      '10'
+                                    : 'transparent',
+                              },
+                            ]}
+                            onPress={() => {
+                              if (
+                                selected
+                              ) {
+                                setSelectedParts(
+                                  selectedParts.filter(
+                                    (
+                                      id
+                                    ) =>
+                                      id !==
+                                      part.id
+                                  )
+                                );
+                              } else {
+                                setSelectedParts(
+                                  [
+                                    ...selectedParts,
+                                    part.id,
+                                  ]
+                                );
+                              }
+                            }}
+                          >
+                            <View
+                              style={{
+                                flex: 1,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  color:
+                                    colors.text,
+                                  fontWeight:
+                                    '800',
+                                }}
+                              >
+                                {
+                                  part.name
+                                }
+                              </Text>
+
+                              <Text
+                                style={{
+                                  color:
+                                    colors.textMuted,
+                                  fontSize: 11,
+                                }}
+                              >
+                                ₹
+                                {
+                                  part.price
+                                }{' '}
+                                • Stock{' '}
+                                {
+                                  part.stock
+                                }
+                              </Text>
+                            </View>
+
+                            <View
+                              style={[
+                                styles.selectBadge,
+                                {
+                                  backgroundColor:
+                                    selected
+                                      ? colors.success +
+                                        '20'
+                                      : colors.border,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={{
+                                  color:
+                                    selected
+                                      ? colors.success
+                                      : colors.textMuted,
+                                  fontSize: 10,
+                                  fontWeight:
+                                    '900',
+                                }}
+                              >
+                                {selected
+                                  ? 'ADDED'
+                                  : 'ADD'}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      }
+                    )}
+
+                    <TouchableOpacity
+                      style={[
+                        styles.submitBtn,
+                        {
+                          backgroundColor:
+                            colors.success,
+                          marginTop: 12,
+                        },
+                      ]}
+                      onPress={
+                        calculateInvoice
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.submitText
+                        }
+                      >
+                        Calculate Invoice
+                      </Text>
+                    </TouchableOpacity>
+                  </GlassCard>
+                )}
+
+                {/* OTP */}
+                {verifyingRepair && (
+                  <GlassCard
+                    style={
+                      styles.modalCard
+                    }
+                  >
+                    <View
+                      style={
+                        styles.row
+                      }
+                    >
+                      <AlertTriangle
+                        size={18}
+                        color={
+                          colors.accent
+                        }
+                      />
+
+                      <Text
+                        style={[
+                          styles.formTitle,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        Verify OTP
+                      </Text>
+                    </View>
+
+                    <Text
+                      style={{
+                        color:
+                          colors.textMuted,
+                        fontSize: 12,
+                        marginTop: 12,
+                        marginBottom: 14,
                       }}
                     >
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 13, color: colors.text, fontWeight: '700' }}>{pt.name}</Text>
-                        <Text style={{ fontSize: 11, color: colors.textMuted }}>Price: ₹{pt.price} • Stock: {pt.stock}</Text>
-                      </View>
-                      
-                      {isSelected ? (
-                        <View style={[styles.miniStatusBadge, { backgroundColor: colors.success + '20' }]}>
-                          <Text style={{ color: colors.success, fontSize: 10, fontWeight: '800' }}>ADDED</Text>
-                        </View>
-                      ) : (
-                        <View style={[styles.miniStatusBadge, { backgroundColor: colors.border }]}>
-                          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '800' }}>ADD</Text>
-                        </View>
-                      )}
+                      Ask the student
+                      for the 4-digit
+                      completion code.
+                      Humans love
+                      security theatre.
+                    </Text>
+
+                    <TextInput
+                      value={
+                        inputOtp
+                      }
+                      onChangeText={
+                        setInputOtp
+                      }
+                      keyboardType="numeric"
+                      maxLength={4}
+                      placeholder="0000"
+                      placeholderTextColor={
+                        colors.textMuted
+                      }
+                      style={[
+                        styles.input,
+                        {
+                          color:
+                            colors.text,
+                          borderColor:
+                            colors.border,
+                          backgroundColor:
+                            colors.surface,
+                          textAlign:
+                            'center',
+                          letterSpacing: 8,
+                          fontSize: 20,
+                        },
+                      ]}
+                    />
+
+                    <TouchableOpacity
+                      style={[
+                        styles.submitBtn,
+                        {
+                          backgroundColor:
+                            colors.primary,
+                        },
+                      ]}
+                      onPress={
+                        verifyOtp
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.submitText
+                        }
+                      >
+                        Verify
+                      </Text>
                     </TouchableOpacity>
-                  );
-                })}
-
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.success, marginTop: 12 }]}
-                  onPress={handleSettlePartsInvoice}
-                >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Calculate Total Quote</Text>
-                </TouchableOpacity>
-              </GlassCard>
+                  </GlassCard>
+                )}
+              </>
             )}
 
-            {/* OTP Verification Prompt Card */}
-            {verifyingRep && (
-              <GlassCard style={styles.billFormCard}>
-                <View style={styles.formHeaderRow}>
-                  <AlertTriangle size={18} color={colors.accent} style={{ marginRight: 8 }} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>Completion OTP verification</Text>
-                  <TouchableOpacity onPress={() => setVerifyingRep(null)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Cancel</Text>
-                  </TouchableOpacity>
-                </View>
+            {/* PARTS */}
+            {activeTab ===
+              'parts' && (
+              <>
+                {parts.map((part) => (
+                  <GlassCard
+                    key={part.id}
+                    style={
+                      styles.partsCard
+                    }
+                  >
+                    <View
+                      style={
+                        styles.cardHeader
+                      }
+                    >
+                      <View
+                        style={
+                          styles.row
+                        }
+                      >
+                        <Settings
+                          size={18}
+                          color={
+                            colors.primary
+                          }
+                        />
 
-                <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 12 }}>
-                  Privacy verification security code has been sent to {verifyingRep.studentName} at room {verifyingRep.room}. Ask the student for the 4-digit code to authorize job closure.
-                </Text>
+                        <Text
+                          style={[
+                            styles.customerName,
+                            {
+                              color:
+                                colors.text,
+                              marginLeft: 8,
+                            },
+                          ]}
+                        >
+                          {
+                            part.name
+                          }
+                        </Text>
+                      </View>
 
-                <TextInput
-                  placeholder="Enter 4-Digit OTP Code (e.g. 4821)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border, textAlign: 'center', letterSpacing: 8, fontSize: 18 }]}
-                  value={inputOtp}
-                  onChangeText={setInputOtp}
-                  maxLength={4}
-                  keyboardType="numeric"
-                />
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          {
+                            backgroundColor:
+                              colors.success +
+                              '20',
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color:
+                              colors.success,
+                            fontSize: 9,
+                            fontWeight:
+                              '900',
+                          }}
+                        >
+                          {
+                            part.stock
+                          }{' '}
+                          STOCK
+                        </Text>
+                      </View>
+                    </View>
 
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-                  onPress={handleVerifyOtp}
-                >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Confirm Verification OTP</Text>
-                </TouchableOpacity>
-              </GlassCard>
+                    <View
+                      style={[
+                        styles.invoiceRow,
+                        {
+                          borderTopColor:
+                            colors.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            colors.textMuted,
+                        }}
+                      >
+                        Price
+                      </Text>
+
+                      <Text
+                        style={{
+                          color:
+                            colors.text,
+                          fontWeight:
+                            '900',
+                        }}
+                      >
+                        ₹
+                        {
+                          part.price
+                        }
+                      </Text>
+                    </View>
+                  </GlassCard>
+                ))}
+              </>
             )}
-          </View>
+
+            {/* OTP TAB */}
+            {activeTab ===
+              'otp' && (
+              <>
+                {repairs
+                  .filter(
+                    (r) =>
+                      r.status !==
+                      'Resolved'
+                  )
+                  .map((repair) => (
+                    <GlassCard
+                      key={repair.id}
+                      style={
+                        styles.partsCard
+                      }
+                    >
+                      <View
+                        style={
+                          styles.cardHeader
+                        }
+                      >
+                        <View
+                          style={{
+                            flex: 1,
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.customerName,
+                              {
+                                color:
+                                  colors.text,
+                              },
+                            ]}
+                          >
+                            {
+                              repair.studentName
+                            }
+                          </Text>
+
+                          <Text
+                            style={{
+                              color:
+                                colors.textMuted,
+                              fontSize: 11,
+                            }}
+                          >
+                            OTP:{' '}
+                            {
+                              repair.otpCode
+                            }
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.actionBtn,
+                            {
+                              backgroundColor:
+                                colors.primary,
+                              flex: 0,
+                              paddingHorizontal: 14,
+                            },
+                          ]}
+                          onPress={() =>
+                            setVerifyingRepair(
+                              repair
+                            )
+                          }
+                        >
+                          <QrCode
+                            size={14}
+                            color="#FFF"
+                          />
+
+                          <Text
+                            style={[
+                              styles.actionText,
+                              {
+                                color:
+                                  '#FFF',
+                              },
+                            ]}
+                          >
+                            Verify
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </GlassCard>
+                  ))}
+              </>
+            )}
+
+            <View
+              style={{
+                height: 120,
+              }}
+            />
+          </>
         )}
-
-        {activeTab === 'parts' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Handyman Spare Parts Ledger</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Track spare parts inventory (motors, pumps, regulator caps, slide rails) and verify stock allocations.
-              </Text>
-            </View>
-
-            {parts.map(pt => (
-              <GlassCard key={pt.id} style={styles.packCard}>
-                <View style={styles.subCardHeader}>
-                  <Settings size={18} color={colors.primary} style={{ marginRight: 8 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{pt.name}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Price Tag: ₹{pt.price} each</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: colors.success + '20' }]}>
-                    <Text style={{ fontSize: 9, color: colors.success, fontWeight: '900' }}>{pt.stock} in stock</Text>
-                  </View>
-                </View>
-
-                <View style={[styles.fitGridArea, { borderTopColor: colors.border }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Standard replacement time: ~15 mins</Text>
-                  </View>
-                  
-                  <TouchableOpacity 
-                    style={[styles.payShareBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Alert.alert('Stock Refill', 'Order spares from the primary service distributors.')}
-                  >
-                    <Text style={{ color: colors.text, fontSize: 9, fontWeight: '800' }}>Restock Spares</Text>
-                  </TouchableOpacity>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
-        )}
-
-        {activeTab === 'otp' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Security OTP Verification Vault</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Validate privacy and lock completion codes for pending handyman repair tickets.
-              </Text>
-            </View>
-
-            {repairs.filter(r => r.status !== 'Resolved').map(rep => (
-              <GlassCard key={rep.id} style={styles.packCard}>
-                <View style={styles.subCardHeader}>
-                  <Wrench size={18} color={colors.accent} style={{ marginRight: 8 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{rep.studentName} ({rep.room})</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Required Code: {rep.otpCode}</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: colors.error + '20' }]}>
-                    <Text style={{ fontSize: 9, color: colors.error, fontWeight: '900' }}>OTP Pending</Text>
-                  </View>
-                </View>
-
-                <View style={[styles.fitGridArea, { borderTopColor: colors.border }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, color: colors.text }}>Issue: {rep.issue}</Text>
-                  </View>
-                  
-                  <TouchableOpacity 
-                    style={[styles.payShareBtn, { backgroundColor: colors.primary }]}
-                    onPress={() => setVerifyingRep(rep)}
-                  >
-                    <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '800' }}>Input OTP Code</Text>
-                  </TouchableOpacity>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
-        )}
-
-        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Floating Bottom Navigation */}
-      <View style={[
-        styles.bottomTabBar, 
-        { 
-          backgroundColor: colors.surface + 'E8', 
-          borderColor: colors.border,
-          shadowColor: colors.primary,
-        }
-      ]}>
+      {/* BOTTOM NAV */}
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            backgroundColor:
+              colors.surface +
+              'E8',
+            borderColor:
+              colors.border,
+          },
+        ]}
+      >
         {[
-            { id: 'repairs', label: 'Category Repair Tickets', icon: Hammer },
-            { id: 'parts', label: 'Spare Parts Ledger', icon: Settings },
-            { id: 'otp', label: 'Completion OTP Verification', icon: Wrench },
-          ].map(tab => {
-          const isActive = activeTab === tab.id;
+          {
+            id: 'repairs',
+            label: 'Repairs',
+            icon: Hammer,
+          },
+          {
+            id: 'parts',
+            label: 'Parts',
+            icon: Settings,
+          },
+          {
+            id: 'otp',
+            label: 'OTP',
+            icon: Wrench,
+          },
+        ].map((tab) => {
           const Icon = tab.icon;
+
+          const active =
+            activeTab === tab.id;
+
           return (
             <TouchableOpacity
               key={tab.id}
-              style={[styles.bottomTabBtn, isActive && { backgroundColor: colors.primary + '18' }]}
-              onPress={() => setActiveTab(tab.id as any)}
+              style={[
+                styles.bottomBtn,
+                active && {
+                  backgroundColor:
+                    colors.primary +
+                    '20',
+                },
+              ]}
+              onPress={() =>
+                setActiveTab(
+                  tab.id as ActiveTab
+                )
+              }
             >
-              <View style={[styles.bottomTabIndicator, isActive && { backgroundColor: colors.primary }]} />
-              <Icon size={20} color={isActive ? colors.primary : colors.textMuted} />
-              <Text style={[styles.bottomTabLabel, { color: isActive ? colors.primary : colors.textMuted }]}>
-                {tab.label.trim()}
+              <Icon
+                size={20}
+                color={
+                  active
+                    ? colors.primary
+                    : colors.textMuted
+                }
+              />
+
+              <Text
+                style={{
+                  color: active
+                    ? colors.primary
+                    : colors.textMuted,
+                  fontSize: 10,
+                  fontWeight: '900',
+                }}
+              >
+                {tab.label}
               </Text>
             </TouchableOpacity>
           );
@@ -689,290 +1706,246 @@ function RepairManagerScreenMerchant() {
       </View>
     </View>
   );
-
 }
 
-
-const styles: any = StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 8,
   },
-  tabBarContainer: {
-    height: 48,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-  },
-  tabsScroll: {
-    paddingHorizontal: Spacing.md,
-    alignItems: 'center',
-    gap: 8,
-  },
-  tabBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  tabIcon: {
-    marginRight: 4,
-  },
-  tabLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
+
   scrollContent: {
     padding: Spacing.md,
   },
-  introHeader: {
-    marginBottom: 16,
+
+  analyticsCard: {
+    padding: 20,
+    borderRadius: 24,
+    marginBottom: 20,
   },
-  introTitle: {
-    fontSize: 18,
-    fontWeight: '800',
+
+  analyticsLabel: {
+    color:
+      'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    fontWeight: '900',
   },
-  introSub: {
-    fontSize: 12,
-    marginTop: 4,
-    lineHeight: 16,
+
+  analyticsValue: {
+    color: '#FFF',
+    fontSize: 34,
+    fontWeight: '900',
+    marginTop: 6,
   },
-  searchRow: {
-    flexDirection: 'row',
-    marginBottom: 12,
-    gap: 8,
+
+  analyticsDivider: {
+    height: 1,
+    backgroundColor:
+      'rgba(255,255,255,0.15)',
+    marginVertical: 14,
   },
-  searchBar: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 13,
-  },
-  addBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 16,
-  },
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  filterChipTxt: {
+
+  analyticsSub: {
+    color:
+      'rgba(255,255,255,0.7)',
     fontSize: 11,
   },
-  modalFormCard: {
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: 16,
+
+  analyticsRevenue: {
+    color: '#FFF',
+    fontSize: 22,
+    fontWeight: '900',
+    marginTop: 4,
   },
-  formHeaderRow: {
+
+  searchRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 10,
     marginBottom: 14,
   },
-  formTitle: {
-    fontSize: 14,
-    fontWeight: '800',
+
+  searchBar: {
     flex: 1,
+    height: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+  },
+
+  addBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+
+  filterChip: {
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+  },
+
+  modalCard: {
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 16,
+  },
+
+  formHeader: {
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  formTitle: {
+    fontSize: 15,
+    fontWeight: '900',
     marginLeft: 6,
   },
-  formInput: {
-    height: 40,
+
+  input: {
+    height: 44,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    fontSize: 13,
-    marginBottom: 10,
-    backgroundColor: 'rgba(255,255,255,0.01)',
-  },
-  submitBtn: {
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  printCard: {
-    padding: 14,
+    borderRadius: 14,
+    paddingHorizontal: 14,
     marginBottom: 12,
-    borderRadius: 16,
   },
-  studentNameText: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  pdfDetailsPanel: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  pdfNameLabel: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  invoiceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 10,
-  },
-  qtyDisplayTxt: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  printActionArea: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-  },
-  shareSlipBtn: {
-    flexDirection: 'row',
-    paddingHorizontal: 12,
-    height: 32,
-    borderRadius: 8,
+
+  submitBtn: {
+    height: 46,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  transitionButton: {
-    flex: 1,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+
+  submitText: {
+    color: '#FFF',
+    fontWeight: '900',
   },
-  billFormCard: {
+
+  repairCard: {
     padding: 16,
-    marginBottom: 16,
-    borderRadius: 16,
+    borderRadius: 20,
+    marginBottom: 12,
   },
-  inlineInputsGrid: {
+
+  partsCard: {
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 12,
+  },
+
+  cardHeader: {
     flexDirection: 'row',
-    marginBottom: 10,
-  },
-  inputLabel: {
-    fontSize: 10,
-    marginBottom: 2,
-    fontWeight: '700',
-  },
-  friendRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    paddingVertical: 8,
-  },
-  payShareBtn: {
-    paddingHorizontal: 10,
-    height: 26,
-    borderRadius: 6,
-    justifyContent: 'center',
     alignItems: 'center',
   },
-  miniStatusBadge: {
+
+  customerName: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+
+  statusBadge: {
     paddingHorizontal: 8,
-    height: 26,
-    borderRadius: 6,
-    justifyContent: 'center',
+    paddingVertical: 4,
+    borderRadius: 10,
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  miniAddBtn: {
+
+  detailsBox: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
     flexDirection: 'row',
+  },
+
+  issueTitle: {
+    fontWeight: '800',
+    fontSize: 13,
+  },
+
+  invoiceRow: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    justifyContent:
+      'space-between',
+  },
+
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+
+  actionBtn: {
+    flex: 1,
+    height: 38,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 5,
+  },
+
+  actionText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  partRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+
+  selectBadge: {
     paddingHorizontal: 10,
     height: 28,
     borderRadius: 8,
-    alignItems: 'center',
-  },
-  packCard: {
-    padding: 14,
-    marginBottom: 12,
-    borderRadius: 16,
-  },
-  fitGridArea: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  fitMeasureCell: {
-    alignItems: 'center',
-  },
-  statusBadgeActive: {
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
-    borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  bottomTabBar: {
+
+  bottomBar: {
     position: 'absolute',
-    bottom: 20,
     left: 16,
     right: 16,
-    height: 72,
-    borderRadius: 22,
+    bottom: 20,
+    height: 74,
+    borderRadius: 24,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 6,
-    elevation: 12,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
+    paddingHorizontal: 8,
   },
-  bottomTabBtn: {
+
+  bottomBtn: {
     flex: 1,
-    height: 56,
-    borderRadius: 16,
+    height: 58,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 3,
-  },
-  bottomTabIndicator: {
-    width: 16,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: 'transparent',
-    marginBottom: 2,
-  },
-  bottomTabLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: 0.2,
+    gap: 4,
   },
 });

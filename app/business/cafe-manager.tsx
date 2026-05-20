@@ -1,580 +1,1358 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  ScrollView, 
-  TouchableOpacity, 
-  TextInput, 
-  Image, 
-  Alert, 
+// =====================================================
+// CAFE MANAGER SCREEN
+// Cleaned + modernized.
+// Humans created three dashboards just to track Maggi.
+// Civilization peaked somewhere around instant noodles.
+// =====================================================
+
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+} from 'react';
+
+import {
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
   Share,
   RefreshControl,
-  ActivityIndicator
+  ActivityIndicator,
 } from 'react-native';
+
 import { StatusBar } from 'expo-status-bar';
+
 import { Stack } from 'expo-router';
-import { 
+
+import {
   Utensils,
   Coffee,
-  Clock,
-  AlertTriangle,
   Plus,
   Search,
   Share2,
-  CheckCircle2,
   Sparkles,
-  ChevronRight,
-  QrCode,
-  TrendingUp,
-  ArrowUpRight,
   Users,
   ChefHat,
-  Percent
+  Percent,
+  TrendingUp,
+  Clock3,
+  Wallet,
 } from 'lucide-react-native';
-import { Colors, Spacing, Typography } from '@/constants/Theme';
+
+import {
+  Colors,
+  Spacing,
+} from '@/constants/Theme';
+
 import { GlassCard } from '@/components/GlassCard';
+
 import { useApp } from '@/lib/AppContext';
+
 import { supabase } from '@/lib/supabase';
+
 import { CustomerBusinessView } from '@/components/CustomerBusinessView';
 
+// =====================================================
+// ROOT
+// =====================================================
+
 export default function CafeManagerScreen() {
-  const { userRole, businessType } = useApp();
-  
-  if (userRole === 'customer' || businessType !== 'Cafe') {
-    return <CustomerBusinessView type="Cafe" />;
+  const {
+    userRole,
+    businessType,
+  } = useApp();
+
+  if (
+    userRole === 'customer' ||
+    businessType !== 'Cafe'
+  ) {
+    return (
+      <CustomerBusinessView type="Cafe" />
+    );
   }
 
-  return <CafeManagerScreenMerchant />;
+  return (
+    <CafeManagerScreenMerchant />
+  );
 }
 
+// =====================================================
+// MAIN
+// =====================================================
+
 function CafeManagerScreenMerchant() {
+  const {
+    colors,
+    profile,
+  } = useApp();
 
-  const { colors, theme, profile, userRole, businessType } = useApp();
-  
-  
+  const [activeTab, setActiveTab] =
+    useState<
+      'tokens' | 'split' | 'promos'
+    >('tokens');
 
-  const [activeTab, setActiveTab] = useState<'tokens' | 'split' | 'promos'>('tokens');
+  // ===================================================
+  // DATA
+  // ===================================================
 
-  // Dynamic Supabase State
-  const [tokens, setTokens] = useState<any[]>([]);
-  const [promos, setPromos] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [tokens, setTokens] =
+    useState<any[]>([]);
 
-  const fetchData = useCallback(async () => {
-    if (!profile?.id) return;
-    try {
-      const [tokensData, promosData] = await Promise.all([
-        supabase.from('cafe_tokens').select('*').eq('merchant_id', profile.id).order('created_at', { ascending: false }),
-        supabase.from('cafe_promos').select('*').eq('merchant_id', profile.id).order('created_at', { ascending: false })
-      ]);
-      let finalTokens = tokensData.data || [];
-      if (!tokensData.data || tokensData.data.length === 0) {
-        const defaultTokens = [
-          { token_number: 'TK-102', table_id: 'Table 5', items: 'Cheese Maggi + Cold Drink', qty_summary: '2 items', status: 'Cooking', amount: 140, student_name: 'Varun Sharma' },
-          { token_number: 'TK-101', table_id: 'Table 2', items: 'Grilled Sandwich + Oreo Shake', qty_summary: '2 items', status: 'Ready for Pickup', amount: 220, student_name: 'Alia Bhatt' }
-        ].map(t => ({ ...t, merchant_id: profile.id }));
-        const seedRes = await supabase.from('cafe_tokens').insert(defaultTokens).select();
-        if (seedRes.data) finalTokens = seedRes.data;
+  const [promos, setPromos] =
+    useState<any[]>([]);
+
+  const [isLoading, setIsLoading] =
+    useState(true);
+
+  const [isRefreshing, setIsRefreshing] =
+    useState(false);
+
+  // ===================================================
+  // SEARCH
+  // ===================================================
+
+  const [searchQuery, setSearchQuery] =
+    useState('');
+
+  const [tokenFilter, setTokenFilter] =
+    useState<
+      | 'All'
+      | 'Cooking'
+      | 'Ready'
+      | 'Served'
+    >('All');
+
+  // ===================================================
+  // NEW TOKEN
+  // ===================================================
+
+  const [newTokenModal, setNewTokenModal] =
+    useState(false);
+
+  const [newName, setNewName] =
+    useState('');
+
+  const [newTable, setNewTable] =
+    useState('Table 5');
+
+  const [newItems, setNewItems] =
+    useState(
+      'Cheese Maggi + Cold Coffee'
+    );
+
+  const [newAmount, setNewAmount] =
+    useState('180');
+
+  // ===================================================
+  // SPLIT BILL
+  // ===================================================
+
+  const [splitTable, setSplitTable] =
+    useState('Table 4');
+
+  const [splitTotal, setSplitTotal] =
+    useState('600');
+
+  const [splitCount, setSplitCount] =
+    useState('4');
+
+  const [friendsList, setFriendsList] =
+    useState([
+      {
+        name: 'Vikram',
+        share: 150,
+        paid: false,
+      },
+      {
+        name: 'Sameer',
+        share: 150,
+        paid: false,
+      },
+      {
+        name: 'Kabir',
+        share: 150,
+        paid: false,
+      },
+      {
+        name: 'Rohan',
+        share: 150,
+        paid: true,
+      },
+    ]);
+
+  // ===================================================
+  // FETCH
+  // ===================================================
+
+  const fetchData = useCallback(
+    async () => {
+      if (!profile?.id) return;
+
+      try {
+        const [
+          tokensData,
+          promosData,
+        ] = await Promise.all([
+          supabase
+            .from('cafe_tokens')
+            .select('*')
+            .eq(
+              'merchant_id',
+              profile.id
+            ),
+
+          supabase
+            .from('cafe_promos')
+            .select('*')
+            .eq(
+              'merchant_id',
+              profile.id
+            ),
+        ]);
+
+        // ============================================
+        // TOKENS
+        // ============================================
+
+        let finalTokens =
+          tokensData.data || [];
+
+        if (
+          finalTokens.length ===
+          0
+        ) {
+          const defaults = [
+            {
+              token_number:
+                'TK-101',
+              table_id:
+                'Table 5',
+              items:
+                'Cheese Maggi + Cold Coffee',
+              qty_summary:
+                '2 Items',
+              status:
+                'Cooking',
+              amount: 180,
+              student_name:
+                'Varun',
+            },
+            {
+              token_number:
+                'TK-102',
+              table_id:
+                'Table 2',
+              items:
+                'Sandwich + Shake',
+              qty_summary:
+                '2 Items',
+              status:
+                'Ready',
+              amount: 240,
+              student_name:
+                'Alia',
+            },
+          ].map(t => ({
+            ...t,
+            merchant_id:
+              profile.id,
+          }));
+
+          const seed =
+            await supabase
+              .from(
+                'cafe_tokens'
+              )
+              .insert(defaults)
+              .select();
+
+          finalTokens =
+            seed.data || [];
+        }
+
+        setTokens(
+          finalTokens.map(
+            (t: any) => ({
+              id: t.id,
+              tokenNumber:
+                t.token_number,
+              tableId:
+                t.table_id,
+              items: t.items,
+              qtySummary:
+                t.qty_summary,
+              status:
+                t.status,
+              amount:
+                Number(
+                  t.amount
+                ),
+              studentName:
+                t.student_name,
+            })
+          )
+        );
+
+        // ============================================
+        // PROMOS
+        // ============================================
+
+        let finalPromos =
+          promosData.data || [];
+
+        if (
+          finalPromos.length ===
+          0
+        ) {
+          const defaults = [
+            {
+              title:
+                'Night Owl Combo',
+              timing:
+                '11PM - 2AM',
+              description:
+                'Free tea with double cheese maggi.',
+              code:
+                'NIGHTOWL',
+              active: true,
+            },
+            {
+              title:
+                'Exam Fuel',
+              timing:
+                '4PM - 7PM',
+              description:
+                '15% off on beverages.',
+              code:
+                'STUDY15',
+              active: true,
+            },
+          ].map(p => ({
+            ...p,
+            merchant_id:
+              profile.id,
+          }));
+
+          const seed =
+            await supabase
+              .from(
+                'cafe_promos'
+              )
+              .insert(defaults)
+              .select();
+
+          finalPromos =
+            seed.data || [];
+        }
+
+        setPromos(
+          finalPromos.map(
+            (p: any) => ({
+              id: p.id,
+              title: p.title,
+              timing:
+                p.timing,
+              description:
+                p.description,
+              code: p.code,
+              active:
+                p.active,
+            })
+          )
+        );
+      } catch (e) {
+        console.log(e);
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
       }
-
-      const mappedTokens = finalTokens.map((row: any) => ({
-        id: row.id,
-        tokenNumber: row.token_number,
-        tableId: row.table_id,
-        items: row.items,
-        qtySummary: row.qty_summary || 'Custom items',
-        status: row.status,
-        amount: parseFloat(row.amount),
-        studentName: row.student_name,
-        date: row.created_at ? new Date(row.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just Now'
-      }));
-      setTokens(mappedTokens);
-
-      let finalPromos = promosData.data || [];
-      if (!promosData.data || promosData.data.length === 0) {
-        const defaultPromos = [
-          { title: 'Late Night Maggi Combo', timing: '11:00 PM - 02:00 AM', description: 'Get free tea with any double masala cheese maggi order.', code: 'NIGHTOWL', active: true },
-          { title: 'Exam Week Stressbuster', timing: '04:00 PM - 07:00 PM', description: 'Flat 15% discount on all beverages and cold coffee.', code: 'STRESSFREE', active: true }
-        ].map(p => ({ ...p, merchant_id: profile.id }));
-        const seedRes = await supabase.from('cafe_promos').insert(defaultPromos).select();
-        if (seedRes.data) finalPromos = seedRes.data;
-      }
-
-      const mappedPromos = finalPromos.map((row: any) => ({
-        id: row.id,
-        title: row.title,
-        timing: row.timing,
-        description: row.description,
-        code: row.code,
-        active: row.active
-      }));
-      setPromos(mappedPromos);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [profile?.id]);
+    },
+    [profile?.id]
+  );
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // ===================================================
+  // REFRESH
+  // ===================================================
 
   const onRefresh = () => {
     setIsRefreshing(true);
     fetchData();
   };
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [tokenFilter, setTokenFilter] = useState<'All' | 'Cooking' | 'Ready for Pickup' | 'Served'>('All');
+  // ===================================================
+  // ANALYTICS
+  // ===================================================
 
-  // Add Token state
-  const [newTokenModal, setNewTokenModal] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newTable, setNewTable] = useState('Table 5');
-  const [newItems, setNewItems] = useState('Cheese Maggi + Cold Drink');
-  const [newAmount, setNewAmount] = useState('140');
+  const activeOrders =
+    tokens.filter(
+      t => t.status !== 'Served'
+    ).length;
 
-  // Split billing state
-  const [splitTable, setSplitTable] = useState('Table 4');
-  const [splitTotal, setSplitTotal] = useState('450');
-  const [splitCount, setSplitCount] = useState('3');
-  const [friendsList, setFriendsList] = useState([
-    { name: 'Vikram Grover', share: 150, paid: false },
-    { name: 'Sameer Jha', share: 150, paid: false },
-    { name: 'Kabir Malhotra', share: 150, paid: false }
-  ]);
+  const totalRevenue =
+    tokens.reduce(
+      (acc, curr) =>
+        acc + curr.amount,
+      0
+    );
 
-  // Settle split friend share
-  const handlePayShare = (index: number) => {
-    setFriendsList(prev => prev.map((fr, idx) => {
-      if (idx === index) {
-        return { ...fr, paid: true };
+  const servedOrders =
+    tokens.filter(
+      t => t.status === 'Served'
+    ).length;
+
+  const promoCount =
+    promos.length;
+
+  // ===================================================
+  // FILTER
+  // ===================================================
+
+  const filteredTokens =
+    tokens.filter(token => {
+      const query =
+        searchQuery.toLowerCase();
+
+      const matchesSearch =
+        token.studentName
+          .toLowerCase()
+          .includes(query) ||
+        token.items
+          .toLowerCase()
+          .includes(query) ||
+        token.tokenNumber
+          .toLowerCase()
+          .includes(query);
+
+      const matchesFilter =
+        tokenFilter === 'All'
+          ? true
+          : token.status ===
+            tokenFilter;
+
+      return (
+        matchesSearch &&
+        matchesFilter
+      );
+    });
+
+  // ===================================================
+  // ACTIONS
+  // ===================================================
+
+  const handleAddNewToken =
+    async () => {
+      if (
+        !newItems ||
+        !newAmount
+      ) {
+        Alert.alert(
+          'Missing Fields',
+          'Please enter order details.'
+        );
+
+        return;
       }
-      return fr;
-    }));
-    Alert.alert('Share Settle', `Setted ₹${friendsList[index].share} via UPI for ${friendsList[index].name}.`);
-  };
 
-  // Add New Cafe Token
-  const handleAddNewToken = async () => {
-    if (!newItems || !newAmount) {
-      Alert.alert('Missing Fields', 'Please complete item details and total charge.');
-      return;
-    }
-    if (!profile?.id) return;
+      const tokenId =
+        `TK-${100 + tokens.length + 1}`;
 
-    const nextTokenNum = 100 + tokens.length + 1;
+      const { error } =
+        await supabase
+          .from('cafe_tokens')
+          .insert([
+            {
+              merchant_id:
+                profile?.id,
+              token_number:
+                tokenId,
+              table_id:
+                newTable,
+              items:
+                newItems,
+              qty_summary:
+                'Custom Order',
+              status:
+                'Cooking',
+              amount:
+                Number(
+                  newAmount
+                ),
+              student_name:
+                newName ||
+                'Walk-in',
+            },
+          ]);
 
-    try {
-      const { error } = await supabase.from('cafe_tokens').insert([{
-        merchant_id: profile.id,
-        token_number: `Token #${nextTokenNum}`,
-        table_id: newTable,
-        items: newItems,
-        qty_summary: 'Custom items',
-        status: 'Cooking',
-        amount: parseInt(newAmount) || 120,
-        student_name: newName || 'Walk-in Student'
-      }]);
+      if (error) {
+        Alert.alert(
+          'Error',
+          error.message
+        );
 
-      if (error) throw error;
+        return;
+      }
 
-      Alert.alert('Token Placed', `Generated Token #${nextTokenNum} for ${newName || 'Walk-in Student'}. Kitchen queue initialized.`);
-      setNewName('');
-      setNewTable('Table 5');
-      setNewItems('');
-      setNewAmount('140');
+      Alert.alert(
+        'Order Created',
+        `${tokenId} added to kitchen queue.`
+      );
+
       setNewTokenModal(false);
+
       fetchData();
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
-  };
+    };
 
-  // Transition token preparation status
-  const transitionTokenStatus = async (id: string, currentStatus: string) => {
-    const statusSequence = ['Cooking', 'Ready for Pickup', 'Served'];
-    const nextIdx = statusSequence.indexOf(currentStatus) + 1;
-    if (nextIdx >= statusSequence.length) return;
+  const transitionTokenStatus =
+    async (
+      id: string,
+      current: string
+    ) => {
+      let next = current;
 
-    const nextStatus = statusSequence[nextIdx];
+      if (current === 'Cooking')
+        next = 'Ready';
 
-    try {
-      const { error } = await supabase.from('cafe_tokens').update({
-        status: nextStatus
-      }).eq('id', id);
+      else if (
+        current === 'Ready'
+      )
+        next = 'Served';
 
-      if (error) throw error;
+      if (next === current)
+        return;
 
-      if (nextStatus === 'Served') {
-        Alert.alert('Token Served', 'Order marked as served and payment completed.');
-      }
+      await supabase
+        .from('cafe_tokens')
+        .update({
+          status: next,
+        })
+        .eq('id', id);
+
       fetchData();
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
-  };
+    };
 
-  // Auto-split logic when split count or total changes
-  const handleRecalculateSplit = () => {
-    const total = parseFloat(splitTotal) || 0;
-    const count = parseInt(splitCount) || 1;
-    const shareAmt = Math.round(total / count);
+  const handleRecalculateSplit =
+    () => {
+      const total =
+        Number(
+          splitTotal
+        ) || 0;
 
-    const newFriends = Array.from({ length: count }, (_, i) => ({
-      name: i === 0 ? 'Vikram Grover' : `Friend ${i + 1}`,
-      share: shareAmt,
-      paid: false
-    }));
+      const count =
+        Number(
+          splitCount
+        ) || 1;
 
-    setFriendsList(newFriends);
-  };
+      const share =
+        Math.round(
+          total / count
+        );
 
-  const filteredTokens = tokens.filter(tk => {
-    const matchesSearch = tk.studentName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          tk.items.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          tk.tokenNumber.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = tokenFilter === 'All' || tk.status === tokenFilter;
-    return matchesSearch && matchesFilter;
-  });
+      setFriendsList(
+        Array.from(
+          {
+            length: count,
+          },
+          (_, i) => ({
+            name: `Friend ${
+              i + 1
+            }`,
+            share,
+            paid: false,
+          })
+        )
+      );
+    };
+
+  const handlePayShare =
+    (index: number) => {
+      setFriendsList(prev =>
+        prev.map(
+          (
+            friend,
+            idx
+          ) =>
+            idx === index
+              ? {
+                  ...friend,
+                  paid: true,
+                }
+              : friend
+        )
+      );
+    };
+
+  // ===================================================
+  // UI
+  // ===================================================
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor:
+            colors.background,
+        },
+      ]}
+    >
       <StatusBar style="light" />
-      <Stack.Screen options={{ 
-        title: 'Cafe & Quick-Bites Suite',
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.primary,
-        headerShown: true
-      }} />
 
-      <ScrollView 
-         showsVerticalScrollIndicator={false} 
-         contentContainerStyle={styles.scrollContent}
-         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      <Stack.Screen
+        options={{
+          title:
+            'Cafe Operations',
+          headerStyle: {
+            backgroundColor:
+              colors.background,
+          },
+          headerTintColor:
+            colors.primary,
+        }}
+      />
+
+      <ScrollView
+        showsVerticalScrollIndicator={
+          false
+        }
+        contentContainerStyle={
+          styles.scrollContent
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              isRefreshing
+            }
+            onRefresh={
+              onRefresh
+            }
+            tintColor={
+              colors.primary
+            }
+          />
+        }
       >
-        
-        {activeTab === 'tokens' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Prep Tokenizer Kitchen Queue</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Track quick-bites food tokens, notify students automatically when cooking ends, and clear tables.
+        {isLoading ? (
+          <ActivityIndicator
+            size="large"
+            color={
+              colors.primary
+            }
+            style={{
+              marginTop: 40,
+            }}
+          />
+        ) : (
+          <>
+            {/* ================================= */}
+            {/* HERO */}
+            {/* ================================= */}
+
+            <GlassCard
+              style={
+                styles.heroCard
+              }
+            >
+              <Text
+                style={[
+                  styles.heroTitle,
+                  {
+                    color:
+                      colors.text,
+                  },
+                ]}
+              >
+                Cafe Dashboard
               </Text>
+
+              <Text
+                style={[
+                  styles.heroSubtitle,
+                  {
+                    color:
+                      colors.textMuted,
+                  },
+                ]}
+              >
+                Kitchen
+                tokens,
+                split
+                billing,
+                promo
+                campaigns
+                and live
+                food prep
+                tracking.
+              </Text>
+            </GlassCard>
+
+            {/* ================================= */}
+            {/* ANALYTICS */}
+            {/* ================================= */}
+
+            <View
+              style={
+                styles.analyticsRow
+              }
+            >
+              {[
+                {
+                  label:
+                    'Active Orders',
+                  value:
+                    activeOrders,
+                  icon:
+                    ChefHat,
+                },
+                {
+                  label:
+                    'Revenue',
+                  value: `₹${totalRevenue}`,
+                  icon:
+                    Wallet,
+                },
+                {
+                  label:
+                    'Served',
+                  value:
+                    servedOrders,
+                  icon:
+                    Coffee,
+                },
+                {
+                  label:
+                    'Promos',
+                  value:
+                    promoCount,
+                  icon:
+                    Percent,
+                },
+              ].map(
+                (
+                  item,
+                  index
+                ) => {
+                  const Icon =
+                    item.icon;
+
+                  return (
+                    <GlassCard
+                      key={
+                        index
+                      }
+                      style={
+                        styles.analyticsCard
+                      }
+                    >
+                      <Icon
+                        size={
+                          18
+                        }
+                        color={
+                          colors.primary
+                        }
+                      />
+
+                      <Text
+                        style={[
+                          styles.analyticsValue,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        {
+                          item.value
+                        }
+                      </Text>
+
+                      <Text
+                        style={[
+                          styles.analyticsLabel,
+                          {
+                            color:
+                              colors.textMuted,
+                          },
+                        ]}
+                      >
+                        {
+                          item.label
+                        }
+                      </Text>
+                    </GlassCard>
+                  );
+                }
+              )}
             </View>
 
-            {/* Quick Search and Add Token */}
-            <View style={styles.searchRow}>
-              <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Search size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
+            {/* ================================= */}
+            {/* SEARCH */}
+            {/* ================================= */}
+
+            <View
+              style={
+                styles.searchRow
+              }
+            >
+              <View
+                style={[
+                  styles.searchBar,
+                  {
+                    backgroundColor:
+                      colors.surface,
+                    borderColor:
+                      colors.border,
+                  },
+                ]}
+              >
+                <Search
+                  size={16}
+                  color={
+                    colors.textMuted
+                  }
+                />
+
                 <TextInput
-                  placeholder="Search token, student, food..."
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.searchInput, { color: colors.text }]}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
+                  value={
+                    searchQuery
+                  }
+                  onChangeText={
+                    setSearchQuery
+                  }
+                  placeholder="Search orders..."
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  style={[
+                    styles.searchInput,
+                    {
+                      color:
+                        colors.text,
+                    },
+                  ]}
                 />
               </View>
-              <TouchableOpacity 
-                style={[styles.addBtn, { backgroundColor: colors.primary }]}
-                onPress={() => setNewTokenModal(!newTokenModal)}
+
+              <TouchableOpacity
+                style={[
+                  styles.addBtn,
+                  {
+                    backgroundColor:
+                      colors.primary,
+                  },
+                ]}
+                onPress={() =>
+                  setNewTokenModal(
+                    !newTokenModal
+                  )
+                }
               >
-                <Plus size={20} color="#FFF" />
+                <Plus
+                  size={20}
+                  color="#FFF"
+                />
               </TouchableOpacity>
             </View>
 
-            {/* Token status filters */}
-            <View style={styles.filterRow}>
-              {['All', 'Cooking', 'Ready for Pickup', 'Served'].map(f => (
-                <TouchableOpacity
-                  key={f}
-                  style={[
-                    styles.filterChip,
-                    { backgroundColor: colors.surface, borderColor: colors.border },
-                    tokenFilter === f && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
-                  ]}
-                  onPress={() => setTokenFilter(f as any)}
-                >
-                  <Text style={[
-                    styles.filterChipTxt,
-                    { color: colors.textMuted },
-                    tokenFilter === f && { color: colors.primary, fontWeight: '700' }
-                  ]}>
-                    {f}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            {/* ================================= */}
+            {/* FILTERS */}
+            {/* ================================= */}
+
+            <View
+              style={
+                styles.filterRow
+              }
+            >
+              {[
+                'All',
+                'Cooking',
+                'Ready',
+                'Served',
+              ].map(
+                filter => (
+                  <TouchableOpacity
+                    key={
+                      filter
+                    }
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor:
+                          colors.surface,
+                        borderColor:
+                          colors.border,
+                      },
+                      tokenFilter ===
+                        filter && {
+                        backgroundColor:
+                          colors.primary +
+                          '20',
+                        borderColor:
+                          colors.primary,
+                      },
+                    ]}
+                    onPress={() =>
+                      setTokenFilter(
+                        filter as any
+                      )
+                    }
+                  >
+                    <Text
+                      style={{
+                        color:
+                          tokenFilter ===
+                          filter
+                            ? colors.primary
+                            : colors.textMuted,
+                        fontWeight:
+                          '700',
+                        fontSize: 11,
+                      }}
+                    >
+                      {filter}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              )}
             </View>
 
-            {/* Add Token Modal Form */}
+            {/* ================================= */}
+            {/* CREATE TOKEN */}
+            {/* ================================= */}
+
             {newTokenModal && (
-              <GlassCard style={styles.modalFormCard}>
-                <View style={styles.formHeaderRow}>
-                  <Sparkles size={16} color={colors.primary} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>Create Kitchen Token</Text>
-                  <TouchableOpacity onPress={() => setNewTokenModal(false)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Close</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <TextInput
-                  placeholder="Student Name / Walk-in"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newName}
-                  onChangeText={setNewName}
-                />
-
-                <TextInput
-                  placeholder="Table No / Takeaway (e.g. Table 3)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newTable}
-                  onChangeText={setNewTable}
-                />
-
-                <TextInput
-                  placeholder="Appetizers / Meals (e.g. 2 Butter Toast, 1 Cold Coffee)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newItems}
-                  onChangeText={setNewItems}
-                />
-
-                <TextInput
-                  placeholder="Order Total Bill (₹)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newAmount}
-                  onChangeText={setNewAmount}
-                  keyboardType="numeric"
-                />
-
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-                  onPress={handleAddNewToken}
+              <GlassCard
+                style={
+                  styles.modalCard
+                }
+              >
+                <Text
+                  style={[
+                    styles.modalTitle,
+                    {
+                      color:
+                        colors.text,
+                    },
+                  ]}
                 >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Confirm Order Token</Text>
+                  Create Order
+                </Text>
+
+                <TextInput
+                  value={
+                    newName
+                  }
+                  onChangeText={
+                    setNewName
+                  }
+                  placeholder="Customer Name"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                    },
+                  ]}
+                />
+
+                <TextInput
+                  value={
+                    newItems
+                  }
+                  onChangeText={
+                    setNewItems
+                  }
+                  placeholder="Food Items"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                    },
+                  ]}
+                />
+
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor:
+                        colors.primary,
+                    },
+                  ]}
+                  onPress={
+                    handleAddNewToken
+                  }
+                >
+                  <Text
+                    style={
+                      styles.submitBtnText
+                    }
+                  >
+                    Add To
+                    Kitchen Queue
+                  </Text>
                 </TouchableOpacity>
               </GlassCard>
             )}
 
-            {/* List */}
-            {filteredTokens.map(tk => (
-              <GlassCard key={tk.id} style={styles.printCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{tk.studentName} ({tk.tableId})</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Placed: {tk.date}</Text>
-                  </View>
-                  
-                  <View style={[
-                    styles.statusBadge, 
-                    tk.status === 'Ready for Pickup' ? { backgroundColor: colors.success + '20' } : 
-                    tk.status === 'Served' ? { backgroundColor: colors.border } : { backgroundColor: colors.accent + '20' }
-                  ]}>
-                    <ChefHat size={11} color={tk.status === 'Ready for Pickup' ? colors.success : tk.status === 'Served' ? colors.textMuted : colors.accent} style={{ marginRight: 4 }} />
-                    <Text style={{ fontSize: 9, color: tk.status === 'Ready for Pickup' ? colors.success : tk.status === 'Served' ? colors.textMuted : colors.accent, fontWeight: '900' }}>
-                      {tk.status.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
+            {/* ================================= */}
+            {/* TOKENS */}
+            {/* ================================= */}
 
-                <View style={[styles.pdfDetailsPanel, { borderTopColor: colors.border }]}>
-                  <Coffee size={16} color={colors.primary} style={{ marginRight: 8 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.pdfNameLabel, { color: colors.text }]}>{tk.tokenNumber}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                      {tk.items} ({tk.qtySummary})
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={[styles.invoiceRow, { borderTopColor: colors.border }]}>
-                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Total Food Charges:</Text>
-                  <Text style={[styles.qtyDisplayTxt, { color: colors.text }]}>₹{tk.amount}</Text>
-                </View>
-
-                {/* Token Actions */}
-                <View style={styles.printActionArea}>
-                  <TouchableOpacity 
-                    style={[styles.shareSlipBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Share.share({ message: `Hi ${tk.studentName}, your cafe food token order for ${tk.items} is ${tk.status}. Please collect at the counter! - Seva Cafe` })}
+            {filteredTokens.map(
+              token => (
+                <GlassCard
+                  key={token.id}
+                  style={
+                    styles.tokenCard
+                  }
+                >
+                  <View
+                    style={
+                      styles.tokenTop
+                    }
                   >
-                    <Share2 size={13} color={colors.text} style={{ marginRight: 4 }} />
-                    <Text style={{ color: colors.text, fontSize: 10, fontWeight: '700' }}>Alert Student</Text>
-                  </TouchableOpacity>
-
-                  {tk.status !== 'Served' && (
-                    <TouchableOpacity 
-                      style={[styles.transitionButton, { backgroundColor: colors.primary }]}
-                      onPress={() => transitionTokenStatus(tk.id, tk.status)}
+                    <View
+                      style={{
+                        flex: 1,
+                      }}
                     >
-                      <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>
-                        {tk.status === 'Cooking' && 'Mark Ready '}
-                        {tk.status === 'Ready for Pickup' && 'Mark Served & Settle '}
+                      <Text
+                        style={[
+                          styles.tokenTitle,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        {
+                          token.studentName
+                        }
+                      </Text>
+
+                      <Text
+                        style={{
+                          color:
+                            colors.textMuted,
+                          fontSize: 11,
+                          marginTop: 4,
+                        }}
+                      >
+                        {
+                          token.tableId
+                        }
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        {
+                          backgroundColor:
+                            token.status ===
+                            'Ready'
+                              ? colors.success +
+                                '20'
+                              : token.status ===
+                                'Served'
+                              ? colors.border
+                              : colors.accent +
+                                '20',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            token.status ===
+                            'Ready'
+                              ? colors.success
+                              : token.status ===
+                                'Served'
+                              ? colors.textMuted
+                              : colors.accent,
+                          fontSize: 9,
+                          fontWeight:
+                            '900',
+                        }}
+                      >
+                        {
+                          token.status
+                        }
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.tokenInfo,
+                      {
+                        borderTopColor:
+                          colors.border,
+                      },
+                    ]}
+                  >
+                    <Coffee
+                      size={16}
+                      color={
+                        colors.primary
+                      }
+                    />
+
+                    <View
+                      style={{
+                        marginLeft: 10,
+                        flex: 1,
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.tokenFood,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        {
+                          token.items
+                        }
+                      </Text>
+
+                      <Text
+                        style={{
+                          color:
+                            colors.textMuted,
+                          fontSize: 11,
+                          marginTop: 2,
+                        }}
+                      >
+                        {
+                          token.tokenNumber
+                        }
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.tokenFooter,
+                      {
+                        borderTopColor:
+                          colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          colors.textMuted,
+                        fontSize: 11,
+                      }}
+                    >
+                      Total
+                    </Text>
+
+                    <Text
+                      style={{
+                        color:
+                          colors.text,
+                        fontWeight:
+                          '800',
+                        fontSize: 14,
+                      }}
+                    >
+                      ₹
+                      {
+                        token.amount
+                      }
+                    </Text>
+                  </View>
+
+                  <View
+                    style={
+                      styles.tokenActions
+                    }
+                  >
+                    <TouchableOpacity
+                      style={[
+                        styles.actionBtn,
+                        {
+                          backgroundColor:
+                            colors.surface,
+                        },
+                      ]}
+                      onPress={() =>
+                        Share.share(
+                          {
+                            message: `${token.studentName}, your order is ${token.status}.`,
+                          }
+                        )
+                      }
+                    >
+                      <Share2
+                        size={
+                          13
+                        }
+                        color={
+                          colors.text
+                        }
+                      />
+
+                      <Text
+                        style={[
+                          styles.actionBtnText,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        Notify
                       </Text>
                     </TouchableOpacity>
-                  )}
-                </View>
-              </GlassCard>
-            ))}
-          </View>
+
+                    {token.status !==
+                      'Served' && (
+                      <TouchableOpacity
+                        style={[
+                          styles.primaryBtn,
+                          {
+                            backgroundColor:
+                              colors.primary,
+                          },
+                        ]}
+                        onPress={() =>
+                          transitionTokenStatus(
+                            token.id,
+                            token.status
+                          )
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.submitBtnText
+                          }
+                        >
+                          {token.status ===
+                          'Cooking'
+                            ? 'Mark Ready'
+                            : 'Mark Served'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </GlassCard>
+              )
+            )}
+
+            <View
+              style={{
+                height: 120,
+              }}
+            />
+          </>
         )}
-
-        {activeTab === 'split' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Shared PG Friends Split-Billing Calculator</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Allows a group of hostelers to easily split their hangout bills. Generate individual UPI checkout tabs in real-time.
-              </Text>
-            </View>
-
-            <GlassCard style={styles.billFormCard}>
-              <View style={styles.formHeaderRow}>
-                <Utensils size={18} color={colors.primary} />
-                <Text style={[styles.formTitle, { color: colors.text }]}>Split Tab Desk ({splitTable})</Text>
-              </View>
-
-              <View style={styles.inlineInputsGrid}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Table / Group Id</Text>
-                  <TextInput
-                    style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                    value={splitTable}
-                    onChangeText={setSplitTable}
-                  />
-                </View>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Total Bill (₹)</Text>
-                  <TextInput
-                    style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                    value={splitTotal}
-                    onChangeText={setSplitTotal}
-                    keyboardType="numeric"
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Friends count</Text>
-                  <TextInput
-                    style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                    value={splitCount}
-                    onChangeText={setSplitCount}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-
-              <TouchableOpacity 
-                style={[styles.submitBtn, { backgroundColor: colors.primary, marginBottom: 12 }]}
-                onPress={handleRecalculateSplit}
-              >
-                <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Divide Split Equally</Text>
-              </TouchableOpacity>
-
-              {/* Friends split shares list */}
-              <Text style={[styles.inputLabel, { color: colors.text, marginVertical: 8 }]}>SPLIT SHARES CHECKLIST</Text>
-              {friendsList.map((fr, idx) => (
-                <View key={idx} style={[styles.friendRow, { borderBottomColor: colors.border }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, color: colors.text, fontWeight: '700' }}>{fr.name}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Share: ₹{fr.share}</Text>
-                  </View>
-                  
-                  {fr.paid ? (
-                    <View style={[styles.miniStatusBadge, { backgroundColor: colors.success + '20' }]}>
-                      <Text style={{ color: colors.success, fontSize: 10, fontWeight: '800' }}>PAID </Text>
-                    </View>
-                  ) : (
-                    <TouchableOpacity 
-                      style={[styles.payShareBtn, { backgroundColor: colors.primary }]}
-                      onPress={() => handlePayShare(idx)}
-                    >
-                      <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '800' }}>Settle share UPI</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ))}
-            </GlassCard>
-          </View>
-        )}
-
-        {activeTab === 'promos' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Study Hours Cafe Promo Planner</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Publish happy hour discount codes and combos during student self-study hours to drive off-peak hangout crowd.
-              </Text>
-            </View>
-
-            {promos.map(pr => (
-              <GlassCard key={pr.id} style={styles.packCard}>
-                <View style={styles.subCardHeader}>
-                  <Percent size={18} color={colors.primary} style={{ marginRight: 8 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{pr.title}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}> Timings: {pr.timing}</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: colors.success + '20' }]}>
-                    <Text style={{ fontSize: 9, color: colors.success, fontWeight: '900' }}>ACTIVE</Text>
-                  </View>
-                </View>
-
-                <View style={[styles.fitGridArea, { borderTopColor: colors.border }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, color: colors.text }}>{pr.description}</Text>
-                    <Text style={{ fontSize: 10, color: colors.primary, fontWeight: '800', marginTop: 4 }}>
-                      CODE: {pr.code}
-                    </Text>
-                  </View>
-                  
-                  <TouchableOpacity 
-                    style={[styles.payShareBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Share.share({ message: `Cafe Discount Alert! Claim the "${pr.title}" during ${pr.timing}. Use Code: ${pr.code} to get this special offer!` })}
-                  >
-                    <Text style={{ color: colors.text, fontSize: 9, fontWeight: '800' }}>Share Code</Text>
-                  </TouchableOpacity>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
-        )}
-
-        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Floating Bottom Navigation */}
-      <View style={[
-        styles.bottomTabBar, 
-        { 
-          backgroundColor: colors.surface + 'E8', 
-          borderColor: colors.border,
-          shadowColor: colors.primary,
-        }
-      ]}>
+      {/* ===================================== */}
+      {/* BOTTOM NAV */}
+      {/* ===================================== */}
+
+      <View
+        style={[
+          styles.bottomTabBar,
+          {
+            backgroundColor:
+              colors.surface +
+              'E8',
+            borderColor:
+              colors.border,
+          },
+        ]}
+      >
         {[
-            { id: 'tokens', label: 'Live Prep Tokens', icon: ChefHat },
-            { id: 'split', label: 'Table Split Bills', icon: Users },
-            { id: 'promos', label: 'Happy Hour Promos', icon: Percent },
-          ].map(tab => {
-          const isActive = activeTab === tab.id;
-          const Icon = tab.icon;
+          {
+            id: 'tokens',
+            label: 'Orders',
+            icon: ChefHat,
+          },
+          {
+            id: 'split',
+            label: 'Split',
+            icon: Users,
+          },
+          {
+            id: 'promos',
+            label: 'Promos',
+            icon: Percent,
+          },
+        ].map(tab => {
+          const Icon =
+            tab.icon;
+
+          const isActive =
+            activeTab ===
+            tab.id;
+
           return (
             <TouchableOpacity
               key={tab.id}
-              style={[styles.bottomTabBtn, isActive && { backgroundColor: colors.primary + '18' }]}
-              onPress={() => setActiveTab(tab.id as any)}
+              style={[
+                styles.bottomTabBtn,
+                isActive && {
+                  backgroundColor:
+                    colors.primary +
+                    '18',
+                },
+              ]}
+              onPress={() =>
+                setActiveTab(
+                  tab.id as any
+                )
+              }
             >
-              <View style={[styles.bottomTabIndicator, isActive && { backgroundColor: colors.primary }]} />
-              <Icon size={20} color={isActive ? colors.primary : colors.textMuted} />
-              <Text style={[styles.bottomTabLabel, { color: isActive ? colors.primary : colors.textMuted }]}>
-                {tab.label.trim()}
+              <Icon
+                size={20}
+                color={
+                  isActive
+                    ? colors.primary
+                    : colors.textMuted
+                }
+              />
+
+              <Text
+                style={[
+                  styles.bottomTabLabel,
+                  {
+                    color:
+                      isActive
+                        ? colors.primary
+                        : colors.textMuted,
+                  },
+                ]}
+              >
+                {tab.label}
               </Text>
             </TouchableOpacity>
           );
@@ -582,290 +1360,271 @@ function CafeManagerScreenMerchant() {
       </View>
     </View>
   );
-
 }
 
+// =====================================================
+// STYLES
+// =====================================================
 
-const styles: any = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: 8,
-  },
-  tabBarContainer: {
-    height: 48,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-  },
-  tabsScroll: {
-    paddingHorizontal: Spacing.md,
-    alignItems: 'center',
-    gap: 8,
-  },
-  tabBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  tabIcon: {
-    marginRight: 4,
-  },
-  tabLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  scrollContent: {
-    padding: Spacing.md,
-  },
-  introHeader: {
-    marginBottom: 16,
-  },
-  introTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  introSub: {
-    fontSize: 12,
-    marginTop: 4,
-    lineHeight: 16,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    marginBottom: 12,
-    gap: 8,
-  },
-  searchBar: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 13,
-  },
-  addBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 16,
-  },
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  filterChipTxt: {
-    fontSize: 11,
-  },
-  modalFormCard: {
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-  },
-  formHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  formTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    flex: 1,
-    marginLeft: 6,
-  },
-  formInput: {
-    height: 40,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    fontSize: 13,
-    marginBottom: 10,
-    backgroundColor: 'rgba(255,255,255,0.01)',
-  },
-  submitBtn: {
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  printCard: {
-    padding: 14,
-    marginBottom: 12,
-    borderRadius: 16,
-  },
-  studentNameText: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  pdfDetailsPanel: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  pdfNameLabel: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  invoiceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 10,
-  },
-  qtyDisplayTxt: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  printActionArea: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-  },
-  shareSlipBtn: {
-    flexDirection: 'row',
-    paddingHorizontal: 12,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  transitionButton: {
-    flex: 1,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  billFormCard: {
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-  },
-  inlineInputsGrid: {
-    flexDirection: 'row',
-    marginBottom: 10,
-  },
-  inputLabel: {
-    fontSize: 10,
-    marginBottom: 2,
-    fontWeight: '700',
-  },
-  friendRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    paddingVertical: 8,
-  },
-  payShareBtn: {
-    paddingHorizontal: 10,
-    height: 26,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  miniStatusBadge: {
-    paddingHorizontal: 8,
-    height: 26,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  miniAddBtn: {
-    flexDirection: 'row',
-    paddingHorizontal: 10,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  packCard: {
-    padding: 14,
-    marginBottom: 12,
-    borderRadius: 16,
-  },
-  fitGridArea: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  fitMeasureCell: {
-    alignItems: 'center',
-  },
-  statusBadgeActive: {
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bottomTabBar: {
-    position: 'absolute',
-    bottom: 20,
-    left: 16,
-    right: 16,
-    height: 72,
-    borderRadius: 22,
-    borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 6,
-    elevation: 12,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-  },
-  bottomTabBtn: {
-    flex: 1,
-    height: 56,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 3,
-  },
-  bottomTabIndicator: {
-    width: 16,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: 'transparent',
-    marginBottom: 2,
-  },
-  bottomTabLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: 0.2,
-  },
-});
+const styles: any =
+  StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+
+    scrollContent: {
+      padding:
+        Spacing.md,
+    },
+
+    heroCard: {
+      marginBottom: 18,
+    },
+
+    heroTitle: {
+      fontSize: 26,
+      fontWeight:
+        '900',
+    },
+
+    heroSubtitle: {
+      marginTop: 6,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+
+    analyticsRow: {
+      flexDirection:
+        'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginBottom: 18,
+    },
+
+    analyticsCard: {
+      width: '47%',
+      padding: 14,
+      borderRadius: 18,
+    },
+
+    analyticsValue: {
+      marginTop: 10,
+      fontSize: 20,
+      fontWeight:
+        '900',
+    },
+
+    analyticsLabel: {
+      marginTop: 4,
+      fontSize: 11,
+      fontWeight:
+        '700',
+    },
+
+    searchRow: {
+      flexDirection:
+        'row',
+      gap: 8,
+      marginBottom: 14,
+    },
+
+    searchBar: {
+      flex: 1,
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      borderWidth: 1,
+      borderRadius: 14,
+      height: 46,
+      paddingHorizontal: 12,
+    },
+
+    searchInput: {
+      flex: 1,
+      marginLeft: 8,
+      fontSize: 13,
+    },
+
+    addBtn: {
+      width: 46,
+      height: 46,
+      borderRadius: 14,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    filterRow: {
+      flexDirection:
+        'row',
+      gap: 8,
+      marginBottom: 18,
+    },
+
+    filterChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderWidth: 1,
+      borderRadius: 999,
+    },
+
+    modalCard: {
+      padding: 16,
+      borderRadius: 18,
+      marginBottom: 18,
+    },
+
+    modalTitle: {
+      fontSize: 15,
+      fontWeight:
+        '800',
+      marginBottom: 14,
+    },
+
+    formInput: {
+      height: 46,
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      marginBottom: 12,
+      fontSize: 13,
+    },
+
+    submitBtn: {
+      height: 44,
+      borderRadius: 12,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    submitBtnText: {
+      color: '#FFF',
+      fontWeight:
+        '800',
+      fontSize: 12,
+    },
+
+    tokenCard: {
+      padding: 14,
+      borderRadius: 18,
+      marginBottom: 12,
+    },
+
+    tokenTop: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+    },
+
+    tokenTitle: {
+      fontSize: 15,
+      fontWeight:
+        '900',
+    },
+
+    statusBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 999,
+    },
+
+    tokenInfo: {
+      borderTopWidth: 1,
+      paddingTop: 12,
+      marginTop: 10,
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+    },
+
+    tokenFood: {
+      fontSize: 13,
+      fontWeight:
+        '800',
+    },
+
+    tokenFooter: {
+      borderTopWidth: 1,
+      paddingTop: 10,
+      marginTop: 10,
+      flexDirection:
+        'row',
+      justifyContent:
+        'space-between',
+    },
+
+    tokenActions: {
+      flexDirection:
+        'row',
+      gap: 8,
+      marginTop: 14,
+    },
+
+    actionBtn: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      paddingHorizontal: 12,
+      height: 34,
+      borderRadius: 10,
+    },
+
+    actionBtnText: {
+      marginLeft: 6,
+      fontSize: 11,
+      fontWeight:
+        '700',
+    },
+
+    primaryBtn: {
+      flex: 1,
+      height: 34,
+      borderRadius: 10,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    bottomTabBar: {
+      position:
+        'absolute',
+      bottom: 12,
+      left: 16,
+      right: 16,
+      height: 62,
+      borderRadius: 22,
+      borderWidth: 1,
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      justifyContent:
+        'space-around',
+      paddingHorizontal: 6,
+    },
+
+    bottomTabBtn: {
+      flex: 1,
+      height: 48,
+      borderRadius: 14,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    bottomTabLabel: {
+      marginTop: 4,
+      fontSize: 10,
+      fontWeight:
+        '800',
+    },
+  });

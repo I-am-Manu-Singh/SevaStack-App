@@ -1,647 +1,1544 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  ScrollView, 
-  TouchableOpacity, 
-  TextInput, 
-  Image, 
-  Alert, 
+// ======================================================
+// CAB MANAGER SCREEN - CLEANED & MODERNIZED
+// Humanity really built entire apps just to coordinate
+// four people avoiding paying full cab fare.
+// ======================================================
+
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+} from 'react';
+
+import {
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
   Share,
   RefreshControl,
-  ActivityIndicator
+  ActivityIndicator,
 } from 'react-native';
+
 import { StatusBar } from 'expo-status-bar';
+
 import { Stack } from 'expo-router';
-import { 
+
+import {
   Car,
   MapPin,
   Clock,
-  AlertTriangle,
   Plus,
   Search,
   Share2,
-  CheckCircle2,
   Sparkles,
-  ChevronRight,
   QrCode,
   TrendingUp,
-  ArrowUpRight,
   Users,
-  Award
+  Award,
+  ArrowUpRight,
 } from 'lucide-react-native';
-import { Colors, Spacing, Typography } from '@/constants/Theme';
+
+import {
+  Colors,
+  Spacing,
+} from '@/constants/Theme';
+
 import { GlassCard } from '@/components/GlassCard';
+
 import { useApp } from '@/lib/AppContext';
+
 import { supabase } from '@/lib/supabase';
 
 import { CustomerBusinessView } from '@/components/CustomerBusinessView';
 
+// ======================================================
+// ROOT
+// ======================================================
+
 export default function CabManagerScreen() {
-  const { userRole, businessType } = useApp();
-  
-  if (userRole === 'customer' || businessType !== 'Travel') {
-    return <CustomerBusinessView type="Travel" />;
+  const { userRole, businessType } =
+    useApp();
+
+  if (
+    userRole === 'customer' ||
+    businessType !== 'Travel'
+  ) {
+    return (
+      <CustomerBusinessView type="Travel" />
+    );
   }
 
-  return <CabManagerScreenMerchant />;
+  return (
+    <CabManagerScreenMerchant />
+  );
 }
 
+// ======================================================
+// MAIN
+// ======================================================
+
 function CabManagerScreenMerchant() {
+  const {
+    colors,
+    profile,
+  } = useApp();
 
-  const { colors, theme, profile, userRole, businessType } = useApp();
-  
-  
+  const [activeTab, setActiveTab] =
+    useState<
+      'pools' | 'split' | 'tokens'
+    >('pools');
 
-  const [activeTab, setActiveTab] = useState<'pools' | 'split' | 'tokens'>('pools');
+  const [pools, setPools] =
+    useState<any[]>([]);
 
-  // Dynamic Supabase State
-  const [pools, setPools] = useState<any[]>([]);
-  const [tokens, setTokens] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [tokens, setTokens] =
+    useState<any[]>([]);
 
-  const fetchData = useCallback(async () => {
-    if (!profile?.id) return;
-    try {
-      const [poolsData, tokensData] = await Promise.all([
-        supabase.from('cab_pools').select('*').eq('merchant_id', profile.id).order('created_at', { ascending: false }),
-        supabase.from('cab_tokens').select('*').eq('merchant_id', profile.id).order('created_at', { ascending: false })
-      ]);
-      let finalPools = poolsData.data || [];
-      if (!poolsData.data || poolsData.data.length === 0) {
-        const defaultPools = [
-          { destination: 'Jaipur Airport Drop', departure_time: '25 May, 04:00 PM', vehicle_type: 'Sedan Dzire', total_fare: 1200, max_seats: 4, passengers_count: 2, passengers: ['Amit Patel', 'Sneha Roy'], status: 'Open', date: '25 May' },
-          { destination: 'Railway Station Drop', departure_time: '26 May, 10:00 AM', vehicle_type: 'Innova Crysta', total_fare: 1800, max_seats: 6, passengers_count: 6, passengers: ['Vikram Grover', 'Rohan Sen', 'Neha Bajaj', 'Kunal S.', 'Simran K.', 'Jatin P.'], status: 'Locked', date: '26 May' }
-        ].map(p => ({ ...p, merchant_id: profile.id }));
-        const seedRes = await supabase.from('cab_pools').insert(defaultPools).select();
-        if (seedRes.data) finalPools = seedRes.data;
+  const [isLoading, setIsLoading] =
+    useState(true);
+
+  const [isRefreshing, setIsRefreshing] =
+    useState(false);
+
+  // ====================================================
+  // SEARCH
+  // ====================================================
+
+  const [searchQuery, setSearchQuery] =
+    useState('');
+
+  const [poolFilter, setPoolFilter] =
+    useState<
+      'All' | 'Open' | 'Locked'
+    >('All');
+
+  // ====================================================
+  // CREATE POOL
+  // ====================================================
+
+  const [newPoolModal, setNewPoolModal] =
+    useState(false);
+
+  const [newDest, setNewDest] =
+    useState(
+      'Jaipur Airport'
+    );
+
+  const [newTime, setNewTime] =
+    useState(
+      '25 May, 04:00 PM'
+    );
+
+  const [newVehicle, setNewVehicle] =
+    useState('Sedan');
+
+  const [newFare, setNewFare] =
+    useState('1200');
+
+  const [newMaxSeats, setNewMaxSeats] =
+    useState('4');
+
+  // ====================================================
+  // JOIN POOL
+  // ====================================================
+
+  const [joiningPool, setJoiningPool] =
+    useState<any | null>(null);
+
+  const [joinStudent, setJoinStudent] =
+    useState('');
+
+  const [joinPhone, setJoinPhone] =
+    useState('');
+
+  // ====================================================
+  // SPLIT
+  // ====================================================
+
+  const [splitFare, setSplitFare] =
+    useState('1200');
+
+  const [splitSeats, setSplitSeats] =
+    useState('4');
+
+  const [
+    passengerShares,
+    setPassengerShares,
+  ] = useState([
+    {
+      name: 'Amit',
+      share: 300,
+      paid: true,
+    },
+    {
+      name: 'Sneha',
+      share: 300,
+      paid: false,
+    },
+    {
+      name: 'Rohan',
+      share: 300,
+      paid: false,
+    },
+    {
+      name: 'Vikram',
+      share: 300,
+      paid: false,
+    },
+  ]);
+
+  // ====================================================
+  // FETCH
+  // ====================================================
+
+  const fetchData = useCallback(
+    async () => {
+      if (!profile?.id) return;
+
+      try {
+        const [
+          poolsData,
+          tokensData,
+        ] = await Promise.all([
+          supabase
+            .from('cab_pools')
+            .select('*')
+            .eq(
+              'merchant_id',
+              profile.id
+            ),
+
+          supabase
+            .from('cab_tokens')
+            .select('*')
+            .eq(
+              'merchant_id',
+              profile.id
+            ),
+        ]);
+
+        // ========================================
+        // POOLS
+        // ========================================
+
+        let finalPools =
+          poolsData.data || [];
+
+        if (
+          finalPools.length ===
+          0
+        ) {
+          const defaults = [
+            {
+              destination:
+                'Jaipur Airport',
+              departure_time:
+                '25 May, 04:00 PM',
+              vehicle_type:
+                'Sedan Dzire',
+              total_fare:
+                1200,
+              max_seats: 4,
+              passengers_count: 2,
+              passengers: [
+                'Amit',
+                'Sneha',
+              ],
+              status:
+                'Open',
+              date: 'Today',
+            },
+          ].map(p => ({
+            ...p,
+            merchant_id:
+              profile.id,
+          }));
+
+          const seed =
+            await supabase
+              .from(
+                'cab_pools'
+              )
+              .insert(defaults)
+              .select();
+
+          finalPools =
+            seed.data || [];
+        }
+
+        setPools(
+          finalPools.map(
+            (p: any) => ({
+              id: p.id,
+              destination:
+                p.destination,
+              departureTime:
+                p.departure_time,
+              vehicleType:
+                p.vehicle_type,
+              totalFare:
+                p.total_fare,
+              maxSeats:
+                p.max_seats,
+              passengersCount:
+                p.passengers_count,
+              passengers:
+                p.passengers ||
+                [],
+              status:
+                p.status,
+              date: p.date,
+            })
+          )
+        );
+
+        // ========================================
+        // TOKENS
+        // ========================================
+
+        let finalTokens =
+          tokensData.data || [];
+
+        if (
+          finalTokens.length ===
+          0
+        ) {
+          const defaults = [
+            {
+              student_name:
+                'Amit Patel',
+              destination:
+                'Jaipur Airport',
+              deposit_paid:
+                300,
+              contact:
+                '+91 9999999999',
+              status:
+                'Confirmed',
+              pool_joined:
+                'Pool #JP01',
+            },
+          ].map(t => ({
+            ...t,
+            merchant_id:
+              profile.id,
+          }));
+
+          const seed =
+            await supabase
+              .from(
+                'cab_tokens'
+              )
+              .insert(defaults)
+              .select();
+
+          finalTokens =
+            seed.data || [];
+        }
+
+        setTokens(
+          finalTokens.map(
+            (t: any) => ({
+              id: t.id,
+              studentName:
+                t.student_name,
+              destination:
+                t.destination,
+              depositPaid:
+                t.deposit_paid,
+              contact:
+                t.contact,
+              status:
+                t.status,
+              poolJoined:
+                t.pool_joined,
+            })
+          )
+        );
+      } catch (e) {
+        console.log(e);
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
       }
-
-      const mappedPools = finalPools.map((row: any) => ({
-        id: row.id,
-        destination: row.destination,
-        departureTime: row.departure_time,
-        vehicleType: row.vehicle_type,
-        totalFare: row.total_fare,
-        maxSeats: row.max_seats,
-        passengersCount: row.passengers_count,
-        passengers: Array.isArray(row.passengers) ? row.passengers : [],
-        status: row.status,
-        date: row.date
-      }));
-      setPools(mappedPools);
-
-      let finalTokens = tokensData.data || [];
-      if (!tokensData.data || tokensData.data.length === 0) {
-        const defaultTokens = [
-          { student_name: 'Amit Patel', destination: 'Jaipur Airport Drop', deposit_paid: 300, contact: '+919999988888', status: 'Booked', pool_joined: 'Jaipur Airport Drop' },
-          { student_name: 'Sneha Roy', destination: 'Jaipur Airport Drop', deposit_paid: 300, contact: '+919999988877', status: 'Booked', pool_joined: 'Jaipur Airport Drop' }
-        ].map(t => ({ ...t, merchant_id: profile.id }));
-        const seedRes = await supabase.from('cab_tokens').insert(defaultTokens).select();
-        if (seedRes.data) finalTokens = seedRes.data;
-      }
-
-      const mappedTokens = finalTokens.map((row: any) => ({
-        id: row.id,
-        studentName: row.student_name,
-        destination: row.destination,
-        depositPaid: row.deposit_paid,
-        contact: row.contact,
-        status: row.status,
-        poolJoined: row.pool_joined
-      }));
-      setTokens(mappedTokens);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [profile?.id]);
+    },
+    [profile?.id]
+  );
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // ====================================================
+  // REFRESH
+  // ====================================================
 
   const onRefresh = () => {
     setIsRefreshing(true);
     fetchData();
   };
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [poolFilter, setPoolFilter] = useState<'All' | 'Open' | 'Locked'>('All');
+  // ====================================================
+  // ANALYTICS
+  // ====================================================
 
-  // Add Pool state
-  const [newPoolModal, setNewPoolModal] = useState(false);
-  const [newDest, setNewDest] = useState('Jaipur Airport Drop');
-  const [newTime, setNewTime] = useState('25 May, 04:00 PM');
-  const [newVehicle, setNewVehicle] = useState('Sedan Dzire');
-  const [newFare, setNewFare] = useState('1200');
-  const [newMaxSeats, setNewMaxSeats] = useState('4');
+  const activePools =
+    pools.filter(
+      p => p.status === 'Open'
+    ).length;
 
-  // Add passenger to pool state
-  const [joiningPool, setJoiningPool] = useState<any | null>(null);
-  const [joinStudent, setJoinStudent] = useState('');
-  const [joinPhone, setJoinPhone] = useState('');
+  const totalTravelers =
+    pools.reduce(
+      (acc, curr) =>
+        acc +
+        curr.passengersCount,
+      0
+    );
 
-  // Fare Split Calculator States
-  const [splitFare, setSplitFare] = useState('1200');
-  const [splitSeats, setSplitSeats] = useState('4');
-  const [passengerShares, setPassengerShares] = useState([
-    { name: 'Amit Patel', share: 300, paid: true },
-    { name: 'Sneha Roy', share: 300, paid: false },
-    { name: 'Vikram Grover', share: 300, paid: false },
-    { name: 'Rohan Sen', share: 300, paid: false }
-  ]);
+  const totalRevenue =
+    pools.reduce(
+      (acc, curr) =>
+        acc +
+        curr.totalFare,
+      0
+    );
 
-  // Settle individual share
-  const handlePayShare = (index: number) => {
-    setPassengerShares(prev => prev.map((ps, idx) => {
-      if (idx === index) {
-        return { ...ps, paid: true };
+  const averageOccupancy =
+    pools.length
+      ? Math.round(
+          pools.reduce(
+            (acc, curr) =>
+              acc +
+              (curr.passengersCount /
+                curr.maxSeats) *
+                100,
+            0
+          ) / pools.length
+        )
+      : 0;
+
+  // ====================================================
+  // FILTER
+  // ====================================================
+
+  const filteredPools =
+    pools.filter(pool => {
+      const search =
+        searchQuery.toLowerCase();
+
+      const matchesSearch =
+        pool.destination
+          .toLowerCase()
+          .includes(search) ||
+        pool.vehicleType
+          .toLowerCase()
+          .includes(search);
+
+      const matchesFilter =
+        poolFilter === 'All' ||
+        pool.status ===
+          poolFilter;
+
+      return (
+        matchesSearch &&
+        matchesFilter
+      );
+    });
+
+  // ====================================================
+  // ACTIONS
+  // ====================================================
+
+  const handleAddNewPool =
+    async () => {
+      if (
+        !newDest ||
+        !newTime
+      ) {
+        Alert.alert(
+          'Missing Fields',
+          'Please complete required details.'
+        );
+
+        return;
       }
-      return ps;
-    }));
-    Alert.alert('Share Settle', `Setted ₹${passengerShares[index].share} via UPI for ${passengerShares[index].name}.`);
-  };
 
-  // Add New Cab Pool
-  const handleAddNewPool = async () => {
-    if (!newDest || !newTime || !newFare) {
-      Alert.alert('Missing Fields', 'Please complete all required fields.');
-      return;
-    }
-    if (!profile?.id) return;
+      const { error } =
+        await supabase
+          .from('cab_pools')
+          .insert([
+            {
+              merchant_id:
+                profile?.id,
+              destination:
+                newDest,
+              departure_time:
+                newTime,
+              vehicle_type:
+                newVehicle,
+              total_fare:
+                Number(
+                  newFare
+                ),
+              max_seats:
+                Number(
+                  newMaxSeats
+                ),
+              passengers_count: 1,
+              passengers: [
+                'Dispatcher',
+              ],
+              status:
+                'Open',
+              date: 'Today',
+            },
+          ]);
 
-    try {
-      const { error } = await supabase.from('cab_pools').insert([{
-        merchant_id: profile.id,
-        destination: newDest,
-        departure_time: newTime,
-        vehicle_type: newVehicle,
-        total_fare: parseInt(newFare) || 1200,
-        max_seats: parseInt(newMaxSeats) || 4,
-        passengers_count: 1,
-        passengers: ['Owner Dispatch'],
-        status: 'Open',
-        date: 'Today'
-      }]);
+      if (error) {
+        Alert.alert(
+          'Error',
+          error.message
+        );
 
-      if (error) throw error;
+        return;
+      }
 
-      Alert.alert('Cab Pool Created', `Successfully setup a shared ${newVehicle} pool to ${newDest}.`);
+      Alert.alert(
+        'Pool Created',
+        `${newVehicle} pool created successfully.`
+      );
+
       setNewPoolModal(false);
+
       fetchData();
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
-  };
+    };
 
-  // Join passenger to pool
-  const handleJoinStudent = async () => {
-    if (!joinStudent) {
-      Alert.alert('Missing Name', 'Please complete student name.');
-      return;
-    }
-    if (!profile?.id || !joiningPool) return;
+  const handleJoinStudent =
+    async () => {
+      if (!joinStudent)
+        return;
 
-    const newPassengers = [...joiningPool.passengers, joinStudent];
-    const newCount = joiningPool.passengersCount + 1;
-    const nextStatus = newCount >= joiningPool.maxSeats ? 'Locked' : 'Open';
+      const newPassengers = [
+        ...joiningPool.passengers,
+        joinStudent,
+      ];
 
-    try {
-      // 1. Update cab pool table
-      const poolPromise = supabase.from('cab_pools').update({
-        passengers: newPassengers,
-        passengers_count: newCount,
-        status: nextStatus
-      }).eq('id', joiningPool.id);
+      const newCount =
+        joiningPool.passengersCount +
+        1;
 
-      // 2. Insert new token
-      const tokenPromise = supabase.from('cab_tokens').insert([{
-        merchant_id: profile.id,
-        student_name: joinStudent,
-        destination: joiningPool.destination.replace(' Drop', ''),
-        deposit_paid: 200,
-        contact: joinPhone || '+919811220011',
-        status: 'Confirmed',
-        pool_joined: `Pool #${String(joiningPool.id).substring(0, 3)}`
-      }]);
+      const nextStatus =
+        newCount >=
+        joiningPool.maxSeats
+          ? 'Locked'
+          : 'Open';
 
-      const [poolRes, tokenRes] = await Promise.all([poolPromise, tokenPromise]);
+      await supabase
+        .from('cab_pools')
+        .update({
+          passengers:
+            newPassengers,
+          passengers_count:
+            newCount,
+          status:
+            nextStatus,
+        })
+        .eq(
+          'id',
+          joiningPool.id
+        );
 
-      if (poolRes.error) throw poolRes.error;
-      if (tokenRes.error) throw tokenRes.error;
+      await supabase
+        .from('cab_tokens')
+        .insert([
+          {
+            merchant_id:
+              profile?.id,
+            student_name:
+              joinStudent,
+            destination:
+              joiningPool.destination,
+            deposit_paid:
+              200,
+            contact:
+              joinPhone ||
+              '+91 9999999999',
+            status:
+              'Confirmed',
+            pool_joined:
+              joiningPool.destination,
+          },
+        ]);
 
-      Alert.alert('Student Enrolled', `${joinStudent} successfully clustered in ${joiningPool.destination} pool.`);
+      Alert.alert(
+        'Passenger Added',
+        `${joinStudent} joined the pool.`
+      );
+
       setJoinStudent('');
       setJoinPhone('');
-      setJoiningPool(null);
+      setJoiningPool(
+        null
+      );
+
       fetchData();
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
-  };
+    };
 
-  // Calculate manual splits
-  const recalculateFareSplit = () => {
-    const total = parseFloat(splitFare) || 0;
-    const seats = parseInt(splitSeats) || 1;
-    const shareAmt = Math.round(total / seats);
+  const recalculateFareSplit =
+    () => {
+      const total =
+        Number(
+          splitFare
+        ) || 0;
 
-    const newPassengers = Array.from({ length: seats }, (_, i) => ({
-      name: i === 0 ? 'Amit Patel' : i === 1 ? 'Sneha Roy' : `Passenger ${i + 1}`,
-      share: shareAmt,
-      paid: false
-    }));
+      const seats =
+        Number(
+          splitSeats
+        ) || 1;
 
-    setPassengerShares(newPassengers);
-  };
+      const perHead =
+        Math.round(
+          total / seats
+        );
 
-  const filteredPools = pools.filter(pl => {
-    const matchesSearch = pl.destination.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          pl.vehicleType.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          pl.passengers.some((p: string) => p.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesFilter = poolFilter === 'All' || pl.status === poolFilter;
-    return matchesSearch && matchesFilter;
-  });
+      const generated =
+        Array.from(
+          { length: seats },
+          (_, i) => ({
+            name: `Passenger ${
+              i + 1
+            }`,
+            share:
+              perHead,
+            paid: false,
+          })
+        );
+
+      setPassengerShares(
+        generated
+      );
+    };
+
+  const handlePayShare =
+    (index: number) => {
+      setPassengerShares(
+        prev =>
+          prev.map(
+            (
+              p,
+              idx
+            ) =>
+              idx === index
+                ? {
+                    ...p,
+                    paid: true,
+                  }
+                : p
+          )
+      );
+    };
+
+  // ====================================================
+  // UI
+  // ====================================================
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor:
+            colors.background,
+        },
+      ]}
+    >
       <StatusBar style="light" />
-      <Stack.Screen options={{ 
-        title: 'Cab & Travel Pooler',
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.primary,
-        headerShown: true
-      }} />
 
-      <ScrollView 
-         showsVerticalScrollIndicator={false} 
-         contentContainerStyle={styles.scrollContent}
-         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      <Stack.Screen
+        options={{
+          title:
+            'Travel Operations',
+          headerStyle: {
+            backgroundColor:
+              colors.background,
+          },
+          headerTintColor:
+            colors.primary,
+        }}
+      />
+
+      <ScrollView
+        contentContainerStyle={
+          styles.scrollContent
+        }
+        showsVerticalScrollIndicator={
+          false
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              isRefreshing
+            }
+            onRefresh={
+              onRefresh
+            }
+            tintColor={
+              colors.primary
+            }
+          />
+        }
       >
-        
-        {activeTab === 'pools' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Cab Pooling & Transit Dashboard</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Group student travelers heading to airports or stations. Lock pools, allocate Sedan/SUV options, and minimize transit costs.
-              </Text>
+        {isLoading ? (
+          <ActivityIndicator
+            size="large"
+            color={
+              colors.primary
+            }
+            style={{
+              marginTop: 40,
+            }}
+          />
+        ) : (
+          <>
+            {/* ================================= */}
+            {/* HERO */}
+            {/* ================================= */}
+
+            <GlassCard
+              style={
+                styles.heroCard
+              }
+            >
+              <View
+                style={
+                  styles.heroTop
+                }
+              >
+                <View>
+                  <Text
+                    style={[
+                      styles.heroTitle,
+                      {
+                        color:
+                          colors.text,
+                      },
+                    ]}
+                  >
+                    Cab Pool
+                    Operations
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.heroSubtitle,
+                      {
+                        color:
+                          colors.textMuted,
+                      },
+                    ]}
+                  >
+                    Shared
+                    rides,
+                    fare
+                    splits,
+                    traveler
+                    tracking,
+                    deposits
+                    and route
+                    management.
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.liveBadge,
+                    {
+                      backgroundColor:
+                        colors.success +
+                        '20',
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.liveDot,
+                      {
+                        backgroundColor:
+                          colors.success,
+                      },
+                    ]}
+                  />
+
+                  <Text
+                    style={{
+                      color:
+                        colors.success,
+                      fontWeight:
+                        '800',
+                      fontSize: 10,
+                    }}
+                  >
+                    LIVE
+                  </Text>
+                </View>
+              </View>
+            </GlassCard>
+
+            {/* ================================= */}
+            {/* ANALYTICS */}
+            {/* ================================= */}
+
+            <View
+              style={
+                styles.analyticsRow
+              }
+            >
+              {[
+                {
+                  label:
+                    'Active Pools',
+                  value:
+                    activePools,
+                  icon: Car,
+                },
+                {
+                  label:
+                    'Travelers',
+                  value:
+                    totalTravelers,
+                  icon:
+                    Users,
+                },
+                {
+                  label:
+                    'Revenue',
+                  value: `₹${totalRevenue}`,
+                  icon:
+                    TrendingUp,
+                },
+                {
+                  label:
+                    'Occupancy',
+                  value: `${averageOccupancy}%`,
+                  icon:
+                    ArrowUpRight,
+                },
+              ].map(
+                (
+                  item,
+                  index
+                ) => {
+                  const Icon =
+                    item.icon;
+
+                  return (
+                    <GlassCard
+                      key={
+                        index
+                      }
+                      style={
+                        styles.analyticsCard
+                      }
+                    >
+                      <Icon
+                        size={
+                          18
+                        }
+                        color={
+                          colors.primary
+                        }
+                      />
+
+                      <Text
+                        style={[
+                          styles.analyticsValue,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        {
+                          item.value
+                        }
+                      </Text>
+
+                      <Text
+                        style={[
+                          styles.analyticsLabel,
+                          {
+                            color:
+                              colors.textMuted,
+                          },
+                        ]}
+                      >
+                        {
+                          item.label
+                        }
+                      </Text>
+                    </GlassCard>
+                  );
+                }
+              )}
             </View>
 
-            {/* Quick Search and Add Pool */}
-            <View style={styles.searchRow}>
-              <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Search size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
+            {/* ================================= */}
+            {/* SEARCH */}
+            {/* ================================= */}
+
+            <View
+              style={
+                styles.searchRow
+              }
+            >
+              <View
+                style={[
+                  styles.searchBar,
+                  {
+                    backgroundColor:
+                      colors.surface,
+                    borderColor:
+                      colors.border,
+                  },
+                ]}
+              >
+                <Search
+                  size={16}
+                  color={
+                    colors.textMuted
+                  }
+                />
+
                 <TextInput
-                  placeholder="Search destination, vehicle, student..."
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.searchInput, { color: colors.text }]}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
+                  value={
+                    searchQuery
+                  }
+                  onChangeText={
+                    setSearchQuery
+                  }
+                  placeholder="Search pools..."
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  style={[
+                    styles.searchInput,
+                    {
+                      color:
+                        colors.text,
+                    },
+                  ]}
                 />
               </View>
-              <TouchableOpacity 
-                style={[styles.addBtn, { backgroundColor: colors.primary }]}
-                onPress={() => setNewPoolModal(!newPoolModal)}
+
+              <TouchableOpacity
+                style={[
+                  styles.addBtn,
+                  {
+                    backgroundColor:
+                      colors.primary,
+                  },
+                ]}
+                onPress={() =>
+                  setNewPoolModal(
+                    !newPoolModal
+                  )
+                }
               >
-                <Plus size={20} color="#FFF" />
+                <Plus
+                  size={20}
+                  color="#FFF"
+                />
               </TouchableOpacity>
             </View>
 
-            {/* Status Filter Row */}
-            <View style={styles.filterRow}>
-              {['All', 'Open', 'Locked'].map(f => (
-                <TouchableOpacity
-                  key={f}
-                  style={[
-                    styles.filterChip,
-                    { backgroundColor: colors.surface, borderColor: colors.border },
-                    poolFilter === f && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
-                  ]}
-                  onPress={() => setPoolFilter(f as any)}
-                >
-                  <Text style={[
-                    styles.filterChipTxt,
-                    { color: colors.textMuted },
-                    poolFilter === f && { color: colors.primary, fontWeight: '700' }
-                  ]}>
-                    {f}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            {/* ================================= */}
+            {/* FILTERS */}
+            {/* ================================= */}
+
+            <View
+              style={
+                styles.filterRow
+              }
+            >
+              {[
+                'All',
+                'Open',
+                'Locked',
+              ].map(
+                filter => (
+                  <TouchableOpacity
+                    key={
+                      filter
+                    }
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor:
+                          colors.surface,
+                        borderColor:
+                          colors.border,
+                      },
+                      poolFilter ===
+                        filter && {
+                        backgroundColor:
+                          colors.primary +
+                          '20',
+                        borderColor:
+                          colors.primary,
+                      },
+                    ]}
+                    onPress={() =>
+                      setPoolFilter(
+                        filter as any
+                      )
+                    }
+                  >
+                    <Text
+                      style={{
+                        color:
+                          poolFilter ===
+                          filter
+                            ? colors.primary
+                            : colors.textMuted,
+                        fontWeight:
+                          '700',
+                        fontSize: 11,
+                      }}
+                    >
+                      {filter}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              )}
             </View>
 
-            {/* Add Pool Modal Card */}
+            {/* ================================= */}
+            {/* CREATE POOL */}
+            {/* ================================= */}
+
             {newPoolModal && (
-              <GlassCard style={styles.modalFormCard}>
-                <View style={styles.formHeaderRow}>
-                  <Sparkles size={16} color={colors.primary} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>Setup New Cab Pool</Text>
-                  <TouchableOpacity onPress={() => setNewPoolModal(false)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Close</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <TextInput
-                  placeholder="Destination (e.g. Jaipur Airport Drop)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newDest}
-                  onChangeText={setNewDest}
-                />
-
-                <TextInput
-                  placeholder="Departure Date & Time (e.g. 24 May, 06:00 PM)"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={newTime}
-                  onChangeText={setNewTime}
-                />
-
-                <View style={styles.inlineInputsGrid}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Vehicle Type</Text>
-                    <TextInput
-                      style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                      value={newVehicle}
-                      onChangeText={setNewVehicle}
-                    />
-                  </View>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Base Fare (₹)</Text>
-                    <TextInput
-                      style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                      value={newFare}
-                      onChangeText={setNewFare}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Max Seats</Text>
-                    <TextInput
-                      style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                      value={newMaxSeats}
-                      onChangeText={setNewMaxSeats}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                </View>
-
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-                  onPress={handleAddNewPool}
+              <GlassCard
+                style={
+                  styles.modalCard
+                }
+              >
+                <Text
+                  style={[
+                    styles.modalTitle,
+                    {
+                      color:
+                        colors.text,
+                    },
+                  ]}
                 >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Create Cab Pool</Text>
+                  Create Pool
+                </Text>
+
+                <TextInput
+                  value={
+                    newDest
+                  }
+                  onChangeText={
+                    setNewDest
+                  }
+                  placeholder="Destination"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                    },
+                  ]}
+                />
+
+                <TextInput
+                  value={
+                    newTime
+                  }
+                  onChangeText={
+                    setNewTime
+                  }
+                  placeholder="Departure Time"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                    },
+                  ]}
+                />
+
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor:
+                        colors.primary,
+                    },
+                  ]}
+                  onPress={
+                    handleAddNewPool
+                  }
+                >
+                  <Text
+                    style={
+                      styles.submitBtnText
+                    }
+                  >
+                    Create
+                    Cab Pool
+                  </Text>
                 </TouchableOpacity>
               </GlassCard>
             )}
 
-            {/* List */}
-            {filteredPools.map(pl => (
-              <GlassCard key={pl.id} style={styles.printCard}>
-                <View style={styles.subCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{pl.destination}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}> {pl.departureTime} • {pl.date}</Text>
-                  </View>
-                  
-                  <View style={[
-                    styles.statusBadge, 
-                    pl.status === 'Open' ? { backgroundColor: colors.success + '20' } : { backgroundColor: colors.error + '20' }
-                  ]}>
-                    <Car size={11} color={pl.status === 'Open' ? colors.success : colors.error} style={{ marginRight: 4 }} />
-                    <Text style={{ fontSize: 9, color: pl.status === 'Open' ? colors.success : colors.error, fontWeight: '900' }}>
-                      {pl.status.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
+            {/* ================================= */}
+            {/* POOLS */}
+            {/* ================================= */}
 
-                <View style={[styles.pdfDetailsPanel, { borderTopColor: colors.border }]}>
-                  <MapPin size={16} color={colors.primary} style={{ marginRight: 8 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.pdfNameLabel, { color: colors.text }]}>{pl.vehicleType} (Fare: ₹{pl.totalFare})</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                      Passengers: {pl.passengers.join(', ')}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={[styles.invoiceRow, { borderTopColor: colors.border }]}>
-                  <Text style={{ fontSize: 12, color: colors.textMuted }}>Occupancy Allocation Grid:</Text>
-                  <Text style={[styles.qtyDisplayTxt, { color: pl.passengersCount >= pl.maxSeats ? colors.error : colors.success }]}>
-                    {pl.passengersCount} / {pl.maxSeats} Seats Filled
-                  </Text>
-                </View>
-
-                {/* Cab Actions */}
-                <View style={styles.printActionArea}>
-                  <TouchableOpacity 
-                    style={[styles.shareSlipBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Share.share({ message: `Hi students, cab pool to ${pl.destination} in ${pl.vehicleType} departs at ${pl.departureTime}. Seats occupied: ${pl.passengersCount}/${pl.maxSeats}. Join now to split fare!` })}
+            {filteredPools.map(
+              pool => (
+                <GlassCard
+                  key={pool.id}
+                  style={
+                    styles.poolCard
+                  }
+                >
+                  <View
+                    style={
+                      styles.poolTop
+                    }
                   >
-                    <Share2 size={13} color={colors.text} style={{ marginRight: 4 }} />
-                    <Text style={{ color: colors.text, fontSize: 10, fontWeight: '700' }}>Broadcast Pool</Text>
-                  </TouchableOpacity>
-
-                  {pl.status === 'Open' && (
-                    <TouchableOpacity 
-                      style={[styles.transitionButton, { backgroundColor: colors.primary }]}
-                      onPress={() => setJoiningPool(pl)}
+                    <View
+                      style={{
+                        flex: 1,
+                      }}
                     >
-                      <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>
-                        Cluster Student 
+                      <Text
+                        style={[
+                          styles.poolTitle,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        {
+                          pool.destination
+                        }
+                      </Text>
+
+                      <Text
+                        style={{
+                          color:
+                            colors.textMuted,
+                          fontSize: 11,
+                          marginTop: 4,
+                        }}
+                      >
+                        {
+                          pool.departureTime
+                        }
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        {
+                          backgroundColor:
+                            pool.status ===
+                            'Open'
+                              ? colors.success +
+                                '20'
+                              : colors.error +
+                                '20',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            pool.status ===
+                            'Open'
+                              ? colors.success
+                              : colors.error,
+                          fontWeight:
+                            '900',
+                          fontSize: 9,
+                        }}
+                      >
+                        {
+                          pool.status
+                        }
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.poolInfo,
+                      {
+                        borderTopColor:
+                          colors.border,
+                      },
+                    ]}
+                  >
+                    <MapPin
+                      size={16}
+                      color={
+                        colors.primary
+                      }
+                    />
+
+                    <View
+                      style={{
+                        marginLeft: 10,
+                        flex: 1,
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.poolVehicle,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        {
+                          pool.vehicleType
+                        }
+                      </Text>
+
+                      <Text
+                        style={{
+                          color:
+                            colors.textMuted,
+                          fontSize: 11,
+                          marginTop: 2,
+                        }}
+                      >
+                        {
+                          pool.passengers.join(
+                            ', '
+                          )
+                        }
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.poolFooter,
+                      {
+                        borderTopColor:
+                          colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          colors.textMuted,
+                        fontSize: 11,
+                      }}
+                    >
+                      ₹
+                      {
+                        pool.totalFare
+                      }{' '}
+                      total
+                    </Text>
+
+                    <Text
+                      style={{
+                        color:
+                          pool.passengersCount >=
+                          pool.maxSeats
+                            ? colors.error
+                            : colors.success,
+                        fontWeight:
+                          '800',
+                        fontSize: 12,
+                      }}
+                    >
+                      {
+                        pool.passengersCount
+                      }
+                      /
+                      {
+                        pool.maxSeats
+                      }{' '}
+                      seats
+                    </Text>
+                  </View>
+
+                  <View
+                    style={
+                      styles.poolActions
+                    }
+                  >
+                    <TouchableOpacity
+                      style={[
+                        styles.actionBtn,
+                        {
+                          backgroundColor:
+                            colors.surface,
+                        },
+                      ]}
+                      onPress={() =>
+                        Share.share(
+                          {
+                            message: `Cab pool to ${pool.destination}. ${pool.passengersCount}/${pool.maxSeats} seats filled.`,
+                          }
+                        )
+                      }
+                    >
+                      <Share2
+                        size={
+                          13
+                        }
+                        color={
+                          colors.text
+                        }
+                      />
+
+                      <Text
+                        style={[
+                          styles.actionBtnText,
+                          {
+                            color:
+                              colors.text,
+                          },
+                        ]}
+                      >
+                        Share
                       </Text>
                     </TouchableOpacity>
-                  )}
-                </View>
-              </GlassCard>
-            ))}
 
-            {/* Settle passenger add card modal */}
+                    {pool.status ===
+                      'Open' && (
+                      <TouchableOpacity
+                        style={[
+                          styles.joinBtn,
+                          {
+                            backgroundColor:
+                              colors.primary,
+                          },
+                        ]}
+                        onPress={() =>
+                          setJoiningPool(
+                            pool
+                          )
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.submitBtnText
+                          }
+                        >
+                          Add
+                          Passenger
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </GlassCard>
+              )
+            )}
+
+            {/* ================================= */}
+            {/* JOIN */}
+            {/* ================================= */}
+
             {joiningPool && (
-              <GlassCard style={styles.billFormCard}>
-                <View style={styles.formHeaderRow}>
-                  <Users size={18} color={colors.primary} />
-                  <Text style={[styles.formTitle, { color: colors.text }]}>Add Student: {joiningPool.destination}</Text>
-                  <TouchableOpacity onPress={() => setJoiningPool(null)}>
-                    <Text style={{ color: colors.error, fontWeight: '700' }}>Cancel</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <TextInput
-                  placeholder="Student Full Name"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={joinStudent}
-                  onChangeText={setJoinStudent}
-                />
-
-                <TextInput
-                  placeholder="Contact Mobile Number"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                  value={joinPhone}
-                  onChangeText={setJoinPhone}
-                  keyboardType="phone-pad"
-                />
-
-                <TouchableOpacity 
-                  style={[styles.submitBtn, { backgroundColor: colors.success }]}
-                  onPress={handleJoinStudent}
+              <GlassCard
+                style={
+                  styles.modalCard
+                }
+              >
+                <Text
+                  style={[
+                    styles.modalTitle,
+                    {
+                      color:
+                        colors.text,
+                    },
+                  ]}
                 >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Confirm Placement Seat</Text>
+                  Add Passenger
+                </Text>
+
+                <TextInput
+                  value={
+                    joinStudent
+                  }
+                  onChangeText={
+                    setJoinStudent
+                  }
+                  placeholder="Passenger Name"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                    },
+                  ]}
+                />
+
+                <TextInput
+                  value={
+                    joinPhone
+                  }
+                  onChangeText={
+                    setJoinPhone
+                  }
+                  placeholder="Phone Number"
+                  placeholderTextColor={
+                    colors.textMuted
+                  }
+                  style={[
+                    styles.formInput,
+                    {
+                      color:
+                        colors.text,
+                      borderColor:
+                        colors.border,
+                    },
+                  ]}
+                />
+
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    {
+                      backgroundColor:
+                        colors.success,
+                    },
+                  ]}
+                  onPress={
+                    handleJoinStudent
+                  }
+                >
+                  <Text
+                    style={
+                      styles.submitBtnText
+                    }
+                  >
+                    Confirm
+                    Passenger
+                  </Text>
                 </TouchableOpacity>
               </GlassCard>
             )}
-          </View>
+
+            <View
+              style={{
+                height: 120,
+              }}
+            />
+          </>
         )}
-
-        {activeTab === 'split' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Cab Fare Split Calculator Desk</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Compute visual splittings for transit base fares easily based on student occupancy. Settle shares via UPI QR.
-              </Text>
-            </View>
-
-            <GlassCard style={styles.billFormCard}>
-              <View style={styles.formHeaderRow}>
-                <QrCode size={18} color={colors.primary} />
-                <Text style={[styles.formTitle, { color: colors.text }]}>Split Fare POS</Text>
-              </View>
-
-              <View style={styles.inlineInputsGrid}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Total Transit Base Fare (₹)</Text>
-                  <TextInput
-                    style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                    value={splitFare}
-                    onChangeText={setSplitFare}
-                    keyboardType="numeric"
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Checked-in Seats count</Text>
-                  <TextInput
-                    style={[styles.formInput, { color: colors.text, borderColor: colors.border }]}
-                    value={splitSeats}
-                    onChangeText={setSplitSeats}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-
-              <TouchableOpacity 
-                style={[styles.submitBtn, { backgroundColor: colors.primary, marginBottom: 12 }]}
-                onPress={recalculateFareSplit}
-              >
-                <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '800' }}>Calculate Split Equally</Text>
-              </TouchableOpacity>
-
-              {/* Splits List */}
-              <Text style={[styles.inputLabel, { color: colors.text, marginVertical: 8 }]}>INDIVIDUAL PASSENGER SHARES</Text>
-              {passengerShares.map((ps, idx) => (
-                <View key={idx} style={[styles.friendRow, { borderBottomColor: colors.border }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, color: colors.text, fontWeight: '700' }}>{ps.name}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}>Share: ₹{ps.share}</Text>
-                  </View>
-                  
-                  {ps.paid ? (
-                    <View style={[styles.miniStatusBadge, { backgroundColor: colors.success + '20' }]}>
-                      <Text style={{ color: colors.success, fontSize: 10, fontWeight: '800' }}>SETTLED </Text>
-                    </View>
-                  ) : (
-                    <TouchableOpacity 
-                      style={[styles.payShareBtn, { backgroundColor: colors.primary }]}
-                      onPress={() => handlePayShare(idx)}
-                    >
-                      <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '800' }}>Settle Share</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ))}
-            </GlassCard>
-          </View>
-        )}
-
-        {activeTab === 'tokens' && (
-          <View>
-            <View style={styles.introHeader}>
-              <Text style={[styles.introTitle, { color: colors.text }]}> Advance Booking Deposit Tokens</Text>
-              <Text style={[styles.introSub, { color: colors.textMuted }]}>
-                Track deposit transactions and secure travel bookings during end-of-semester holiday rushes.
-              </Text>
-            </View>
-
-            {tokens.map(tk => (
-              <GlassCard key={tk.id} style={styles.packCard}>
-                <View style={styles.subCardHeader}>
-                  <Award size={18} color={colors.primary} style={{ marginRight: 8 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.studentNameText, { color: colors.text }]}>{tk.studentName}</Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted }}> {tk.contact} • Route: {tk.destination}</Text>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: colors.success + '20' }]}>
-                    <Text style={{ fontSize: 9, color: colors.success, fontWeight: '900' }}>{tk.status.toUpperCase()}</Text>
-                  </View>
-                </View>
-
-                <View style={[styles.fitGridArea, { borderTopColor: colors.border }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, color: colors.text }}>Landed in: {tk.poolJoined}</Text>
-                    <Text style={{ fontSize: 10, color: colors.success, fontWeight: '800', marginTop: 4 }}>
-                      Deposit Paid: ₹{tk.depositPaid}
-                    </Text>
-                  </View>
-                  
-                  <TouchableOpacity 
-                    style={[styles.payShareBtn, { backgroundColor: colors.surfaceLight }]}
-                    onPress={() => Alert.alert('Deposit Details', `Token of ₹${tk.depositPaid} is locked for booking validation.`)}
-                  >
-                    <Text style={{ color: colors.text, fontSize: 9, fontWeight: '800' }}>Inspect Deposit</Text>
-                  </TouchableOpacity>
-                </View>
-              </GlassCard>
-            ))}
-          </View>
-        )}
-
-        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Floating Bottom Navigation */}
-      <View style={[
-        styles.bottomTabBar, 
-        { 
-          backgroundColor: colors.surface + 'E8', 
-          borderColor: colors.border,
-          shadowColor: colors.primary,
-        }
-      ]}>
+      {/* ===================================== */}
+      {/* BOTTOM NAV */}
+      {/* ===================================== */}
+
+      <View
+        style={[
+          styles.bottomTabBar,
+          {
+            backgroundColor:
+              colors.surface +
+              'E8',
+            borderColor:
+              colors.border,
+          },
+        ]}
+      >
         {[
-            { id: 'pools', label: 'Active Cab Pools', icon: Car },
-            { id: 'split', label: 'Fare Split Desk', icon: Users },
-            { id: 'tokens', label: 'Booking Token Ledger', icon: Clock },
-          ].map(tab => {
-          const isActive = activeTab === tab.id;
-          const Icon = tab.icon;
+          {
+            id: 'pools',
+            label: 'Pools',
+            icon: Car,
+          },
+          {
+            id: 'split',
+            label: 'Split',
+            icon: Users,
+          },
+          {
+            id: 'tokens',
+            label: 'Tokens',
+            icon: Award,
+          },
+        ].map(tab => {
+          const Icon =
+            tab.icon;
+
+          const isActive =
+            activeTab ===
+            tab.id;
+
           return (
             <TouchableOpacity
               key={tab.id}
-              style={[styles.bottomTabBtn, isActive && { backgroundColor: colors.primary + '18' }]}
-              onPress={() => setActiveTab(tab.id as any)}
+              style={[
+                styles.bottomTabBtn,
+                isActive && {
+                  backgroundColor:
+                    colors.primary +
+                    '18',
+                },
+              ]}
+              onPress={() =>
+                setActiveTab(
+                  tab.id as any
+                )
+              }
             >
-              <View style={[styles.bottomTabIndicator, isActive && { backgroundColor: colors.primary }]} />
-              <Icon size={20} color={isActive ? colors.primary : colors.textMuted} />
-              <Text style={[styles.bottomTabLabel, { color: isActive ? colors.primary : colors.textMuted }]}>
-                {tab.label.trim()}
+              <Icon
+                size={20}
+                color={
+                  isActive
+                    ? colors.primary
+                    : colors.textMuted
+                }
+              />
+
+              <Text
+                style={[
+                  styles.bottomTabLabel,
+                  {
+                    color:
+                      isActive
+                        ? colors.primary
+                        : colors.textMuted,
+                  },
+                ]}
+              >
+                {tab.label}
               </Text>
             </TouchableOpacity>
           );
@@ -649,290 +1546,299 @@ function CabManagerScreenMerchant() {
       </View>
     </View>
   );
-
 }
 
+// ======================================================
+// STYLES
+// ======================================================
 
-const styles: any = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: 8,
-  },
-  tabBarContainer: {
-    height: 48,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-  },
-  tabsScroll: {
-    paddingHorizontal: Spacing.md,
-    alignItems: 'center',
-    gap: 8,
-  },
-  tabBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  tabIcon: {
-    marginRight: 4,
-  },
-  tabLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  scrollContent: {
-    padding: Spacing.md,
-  },
-  introHeader: {
-    marginBottom: 16,
-  },
-  introTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  introSub: {
-    fontSize: 12,
-    marginTop: 4,
-    lineHeight: 16,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    marginBottom: 12,
-    gap: 8,
-  },
-  searchBar: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 13,
-  },
-  addBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 16,
-  },
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  filterChipTxt: {
-    fontSize: 11,
-  },
-  modalFormCard: {
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-  },
-  formHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  formTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    flex: 1,
-    marginLeft: 6,
-  },
-  formInput: {
-    height: 40,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    fontSize: 13,
-    marginBottom: 10,
-    backgroundColor: 'rgba(255,255,255,0.01)',
-  },
-  submitBtn: {
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  printCard: {
-    padding: 14,
-    marginBottom: 12,
-    borderRadius: 16,
-  },
-  studentNameText: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  pdfDetailsPanel: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  pdfNameLabel: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  invoiceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 10,
-  },
-  qtyDisplayTxt: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  printActionArea: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-  },
-  shareSlipBtn: {
-    flexDirection: 'row',
-    paddingHorizontal: 12,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  transitionButton: {
-    flex: 1,
-    height: 32,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  billFormCard: {
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-  },
-  inlineInputsGrid: {
-    flexDirection: 'row',
-    marginBottom: 10,
-  },
-  inputLabel: {
-    fontSize: 10,
-    marginBottom: 2,
-    fontWeight: '700',
-  },
-  friendRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    paddingVertical: 8,
-  },
-  payShareBtn: {
-    paddingHorizontal: 10,
-    height: 26,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  miniStatusBadge: {
-    paddingHorizontal: 8,
-    height: 26,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  miniAddBtn: {
-    flexDirection: 'row',
-    paddingHorizontal: 10,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  packCard: {
-    padding: 14,
-    marginBottom: 12,
-    borderRadius: 16,
-  },
-  fitGridArea: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-    marginTop: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  fitMeasureCell: {
-    alignItems: 'center',
-  },
-  statusBadgeActive: {
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bottomTabBar: {
-    position: 'absolute',
-    bottom: 20,
-    left: 16,
-    right: 16,
-    height: 72,
-    borderRadius: 22,
-    borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 6,
-    elevation: 12,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-  },
-  bottomTabBtn: {
-    flex: 1,
-    height: 56,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 3,
-  },
-  bottomTabIndicator: {
-    width: 16,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: 'transparent',
-    marginBottom: 2,
-  },
-  bottomTabLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: 0.2,
-  },
-});
+const styles: any =
+  StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+
+    scrollContent: {
+      padding:
+        Spacing.md,
+    },
+
+    heroCard: {
+      marginBottom: 18,
+    },
+
+    heroTop: {
+      flexDirection:
+        'row',
+      justifyContent:
+        'space-between',
+    },
+
+    heroTitle: {
+      fontSize: 26,
+      fontWeight:
+        '900',
+    },
+
+    heroSubtitle: {
+      fontSize: 13,
+      marginTop: 6,
+      lineHeight: 18,
+      maxWidth: '85%',
+    },
+
+    liveBadge: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      height: 30,
+    },
+
+    liveDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      marginRight: 6,
+    },
+
+    analyticsRow: {
+      flexDirection:
+        'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginBottom: 18,
+    },
+
+    analyticsCard: {
+      width: '47%',
+      padding: 14,
+      borderRadius: 18,
+    },
+
+    analyticsValue: {
+      fontSize: 20,
+      fontWeight:
+        '900',
+      marginTop: 10,
+    },
+
+    analyticsLabel: {
+      fontSize: 11,
+      marginTop: 4,
+      fontWeight:
+        '700',
+    },
+
+    searchRow: {
+      flexDirection:
+        'row',
+      gap: 8,
+      marginBottom: 14,
+    },
+
+    searchBar: {
+      flex: 1,
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      height: 46,
+      borderWidth: 1,
+      borderRadius: 14,
+      paddingHorizontal: 12,
+    },
+
+    searchInput: {
+      flex: 1,
+      marginLeft: 8,
+      fontSize: 13,
+      fontWeight:
+        '600',
+    },
+
+    addBtn: {
+      width: 46,
+      height: 46,
+      borderRadius: 14,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    filterRow: {
+      flexDirection:
+        'row',
+      gap: 8,
+      marginBottom: 16,
+    },
+
+    filterChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+    },
+
+    modalCard: {
+      padding: 16,
+      borderRadius: 18,
+      marginBottom: 18,
+    },
+
+    modalTitle: {
+      fontSize: 15,
+      fontWeight:
+        '800',
+      marginBottom: 14,
+    },
+
+    formInput: {
+      height: 46,
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      marginBottom: 12,
+      fontSize: 13,
+    },
+
+    submitBtn: {
+      height: 44,
+      borderRadius: 12,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    submitBtnText: {
+      color: '#FFF',
+      fontWeight:
+        '800',
+      fontSize: 12,
+    },
+
+    poolCard: {
+      padding: 14,
+      borderRadius: 18,
+      marginBottom: 12,
+    },
+
+    poolTop: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+    },
+
+    poolTitle: {
+      fontSize: 15,
+      fontWeight:
+        '900',
+    },
+
+    statusBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 999,
+    },
+
+    poolInfo: {
+      borderTopWidth: 1,
+      paddingTop: 12,
+      marginTop: 10,
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+    },
+
+    poolVehicle: {
+      fontSize: 13,
+      fontWeight:
+        '800',
+    },
+
+    poolFooter: {
+      borderTopWidth: 1,
+      paddingTop: 10,
+      marginTop: 10,
+      flexDirection:
+        'row',
+      justifyContent:
+        'space-between',
+    },
+
+    poolActions: {
+      flexDirection:
+        'row',
+      gap: 8,
+      marginTop: 14,
+    },
+
+    actionBtn: {
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      paddingHorizontal: 12,
+      height: 34,
+      borderRadius: 10,
+    },
+
+    actionBtnText: {
+      marginLeft: 6,
+      fontWeight:
+        '700',
+      fontSize: 11,
+    },
+
+    joinBtn: {
+      flex: 1,
+      height: 34,
+      borderRadius: 10,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    bottomTabBar: {
+      position:
+        'absolute',
+      bottom: 12,
+      left: 16,
+      right: 16,
+      height: 62,
+      borderRadius: 22,
+      borderWidth: 1,
+      flexDirection:
+        'row',
+      alignItems:
+        'center',
+      justifyContent:
+        'space-around',
+      paddingHorizontal: 6,
+    },
+
+    bottomTabBtn: {
+      flex: 1,
+      height: 48,
+      borderRadius: 14,
+      justifyContent:
+        'center',
+      alignItems:
+        'center',
+    },
+
+    bottomTabLabel: {
+      fontSize: 10,
+      fontWeight:
+        '800',
+      marginTop: 4,
+    },
+  });

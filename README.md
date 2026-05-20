@@ -8,14 +8,14 @@ SevaStack is a modern, high-fidelity React Native (Expo) application built to br
 
 ```mermaid
 graph TD
-    subgraph Client Layer (React Native + Expo)
+    subgraph Client_Layer["Client Layer (React Native + Expo)"]
         Router[Expo Router File System Routing]
         Ctx[AppContext Provider - Theme, Role, Translation]
         Hooks[Custom Hooks - useMerchantData, useSafeAreaInsets]
         Views[Tab Screens & Modular Widgets]
     end
 
-    subgraph Database & Backend Layer (Supabase)
+    subgraph Database_Backend_Layer["Database & Backend Layer (Supabase)"]
         Auth[Supabase Auth - User Roles & Tokens]
         DB[(PostgreSQL Database)]
         RLS[Row Level Security Policies]

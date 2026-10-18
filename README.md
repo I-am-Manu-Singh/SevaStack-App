@@ -1,6 +1,55 @@
 # SevaStack Merchant & Student Platform 🏪🎓
 
+<p align="center">
+  <img src="assets/images/icon.png" alt="SevaStack Logo" width="128" height="128" style="border-radius: 20%;" />
+</p>
+
 SevaStack is a modern, high-fidelity React Native (Expo) application built to bridge the gap between verified campus merchants and university students. The platform caters to three primary roles: **Students (Customers)**, **Merchants**, and **System Administrators**, with dynamic role switching enabled for local development.
+
+---
+
+## 📱 App Screenshots
+
+<p align="center">
+  <table>
+    <tr>
+      <td align="center" width="25%">
+        <img src="screenshots/screenshot_1.png" alt="Screenshot 1" width="100%" /><br />
+        <b>1. Student & Merchant Discovery</b>
+      </td>
+      <td align="center" width="25%">
+        <img src="screenshots/screenshot_2.png" alt="Screenshot 2" width="100%" /><br />
+        <b>2. Store Catalog & Offerings</b>
+      </td>
+      <td align="center" width="25%">
+        <img src="screenshots/screenshot_3.png" alt="Screenshot 3" width="100%" /><br />
+        <b>3. Cart & Instant Checkout</b>
+      </td>
+      <td align="center" width="25%">
+        <img src="screenshots/screenshot_4.png" alt="Screenshot 4" width="100%" /><br />
+        <b>4. Live Order Tracking</b>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" width="25%">
+        <img src="screenshots/screenshot_5.png" alt="Screenshot 5" width="100%" /><br />
+        <b>5. Merchant POS Terminal</b>
+      </td>
+      <td align="center" width="25%">
+        <img src="screenshots/screenshot_6.png" alt="Screenshot 6" width="100%" /><br />
+        <b>6. Inventory & Menu Manager</b>
+      </td>
+      <td align="center" width="25%">
+        <img src="screenshots/screenshot_7.png" alt="Screenshot 7" width="100%" /><br />
+        <b>7. Daily Revenue & Settlements</b>
+      </td>
+      <td align="center" width="25%">
+        <img src="screenshots/screenshot_8.png" alt="Screenshot 8" width="100%" /><br />
+        <b>8. Multi-Role Switcher & Settings</b>
+      </td>
+    </tr>
+  </table>
+</p>
 
 ---
 
